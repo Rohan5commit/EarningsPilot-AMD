@@ -44,6 +44,19 @@ EarningsPilot AMD turns raw earnings and filings material into a decision-ready 
 - In deterministic demo mode, uses reliable extractive summaries.
 - In AMD model mode, calls an OpenAI-compatible endpoint for compact JSON summaries.
 
+
+## Model improvement loop
+
+EarningsPilot AMD separates demo reliability from model training. The public app can run deterministically, while the production path can improve model behavior through an AMD-hosted fine-tuning loop:
+
+1. Capture analyst corrections and failed extractions.
+2. Convert them to chat-format SFT examples like `training-data/earningspilot-sft.jsonl`.
+3. Run LoRA/QLoRA fine-tuning on AMD Developer Cloud with ROCm.
+4. Evaluate with `scripts/evaluate-sample.mjs` and future golden filing packs.
+5. Serve the tuned adapter behind the same OpenAI-compatible endpoint used by the Report Agent.
+
+This keeps the hackathon demo reliable while showing a credible path to domain adaptation.
+
 ## AMD Developer Cloud integration
 
 The app is deliberately split between orchestration and inference:

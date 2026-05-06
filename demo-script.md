@@ -26,7 +26,7 @@ Click a KPI evidence chip and a risk card.
 
 **0:48-1:00 — Business and AMD story**
 
-"In production, the Report Agent can call an OpenAI-compatible endpoint serving Qwen, Llama, DeepSeek, or Mistral on AMD Developer Cloud GPUs. That keeps sensitive filings on an open-source, AMD-accelerated stack while the public demo remains reliable."
+"In production, the Report Agent can call an OpenAI-compatible endpoint serving Qwen, Llama, DeepSeek, or Mistral on AMD Developer Cloud GPUs. We also include a LoRA fine-tuning dataset and eval harness, so analyst corrections can become a tuned AMD-hosted adapter without making the public demo fragile."
 
 ## 3-minute video outline
 
@@ -34,6 +34,6 @@ Click a KPI evidence chip and a risk card.
 2. Product: upload materials and receive a source-grounded action memo.
 3. Agent architecture: five specialized agents with typed outputs.
 4. Demo: run sample, inspect KPI table, click evidence, review risks and memo.
-5. AMD: ROCm-compatible serving path and open-source models on AMD Developer Cloud.
+5. AMD: ROCm-compatible serving path, optional LoRA fine-tuning, and open-source models on AMD Developer Cloud.
 6. Business value: faster diligence, better handoffs, repeatable research packets.
 7. Closing: Hugging Face Space and GitHub repo are ready for judges.

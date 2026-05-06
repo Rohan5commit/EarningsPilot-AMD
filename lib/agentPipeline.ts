@@ -43,20 +43,21 @@ function scoreTone(sentences: string[]) {
 
 function extractKpis(findings: InternalFinding[]): Kpi[] {
   const metrics = [
-    'revenue',
-    'gross margin',
+    'data center revenue',
     'operating cash flow',
     'free cash flow',
-    'data center revenue',
-    'inventory days',
     'capital expenditures',
     'revenue guide',
-    'guidance'
+    'gross margin',
+    'inventory days',
+    'guidance',
+    'revenue'
   ];
   const kpis: Kpi[] = [];
   for (const finding of findings) {
     const lower = finding.sentence.toLowerCase();
-    const metric = metrics.find((candidate) => lower.includes(candidate));
+    const firstCsvCell = finding.sentence.includes(',') ? finding.sentence.split(',')[0]?.trim().toLowerCase() : '';
+    const metric = metrics.find((candidate) => firstCsvCell === candidate) || metrics.find((candidate) => lower.includes(candidate));
     const valueMatch = finding.sentence.match(/(?:\$\s?\d+(?:\.\d+)?\s?(?:billion|million|B|M)?|\d+(?:\.\d+)?%|\d+\s?basis points|\d+\s?days|\$\s?\d+(?:\.\d+)?B\s?-\s?\$?\d+(?:\.\d+)?B)/i);
     if (metric && valueMatch && !kpis.some((kpi) => kpi.metric.toLowerCase() === metric && kpi.value === valueMatch[0])) {
       const period = finding.sentence.match(/Q[1-4]\s?FY\d{2}|FY\d{2,4}|full-year|quarter/i)?.[0] || 'reported period';
@@ -138,8 +139,15 @@ export async function runEarningsPilot(documents: DocumentInput[]): Promise<Anal
   const parserEvidenceId = addEvidence(evidence, cleaned[0].name, parserChunks[0]?.chunk || cleaned[0].text, 'Initial parsed document chunk used to anchor company brief.', 'Parser Agent');
 
   const findings: InternalFinding[] = [];
-  for (const doc of cleaned) {
-    for (const sentence of splitSentences(doc.text)) {
+  const analysisDocs = [...cleaned].sort((a, b) => Number(b.type.includes('csv') || b.name.toLowerCase().endsWith('.csv')) - Number(a.type.includes('csv') || a.name.toLowerCase().endsWith('.csv')));
+
+  for (const doc of analysisDocs) {
+    const isCsv = doc.type.includes('csv') || doc.name.toLowerCase().endsWith('.csv');
+    const candidates = [
+      ...(isCsv ? [] : splitSentences(doc.text)),
+      ...doc.text.split('\n').map((line) => line.trim()).filter((line) => line.includes(',') && line.length > 20 && !line.toLowerCase().startsWith('metric,'))
+    ];
+    for (const sentence of candidates) {
       const lower = sentence.toLowerCase();
       if (/revenue|margin|cash flow|inventory|guid|growth|risk|constrain|pressure|export|customer|capacity|capex|capital expenditures|pricing|demand|signed|foundry|geopolitical/.test(lower)) {
         const agent = /risk|constrain|pressure|export|loss|delay|geopolitical|shortage/.test(lower) ? 'Risk Agent' : /revenue|margin|cash flow|inventory|guid|growth/.test(lower) ? 'KPI Extraction Agent' : 'Thesis Agent';

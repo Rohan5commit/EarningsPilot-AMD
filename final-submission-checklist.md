@@ -12,6 +12,9 @@
 - [x] Slide deck outline included
 - [x] Submission description included
 - [x] Seeded sample documents included
+- [x] Seed supervised fine-tuning data included
+- [x] Golden evaluation harness included
+- [x] AMD fine-tuning plan included
 
 ## Demo application
 
@@ -31,6 +34,7 @@
 - [x] Agent architecture is visible in the product
 - [x] AMD Developer Cloud story is documented
 - [x] Open-source model path is documented
+- [x] Optional LoRA/QLoRA path on AMD Developer Cloud is documented
 - [x] Business value is clear
 - [x] Differentiation from generic chatbots is explicit
 

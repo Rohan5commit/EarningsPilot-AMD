@@ -46,6 +46,19 @@ Track:
 
 AMD GPU capacity enables the product to run open-source finance workflows without sending sensitive company materials to closed hosted systems. The agent architecture can scale horizontally: multiple document chunks and extraction agents can be batched or parallelized across AMD GPU workers.
 
+
+## Training benchmark extension
+
+For a stronger AMD Developer Cloud story, run a small LoRA adapter experiment with `training-data/earningspilot-sft.jsonl` and record:
+
+- Adapter training wall-clock time.
+- Peak GPU memory.
+- Tokens per second during SFT.
+- JSON-validity rate before vs. after fine-tuning.
+- Golden-sample pass/fail from `npm run eval:sample`.
+
+The point is not that five seed examples create a production finance model. The point is that the repo has the instrumentation and workflow needed to collect analyst corrections, fine-tune adapters on AMD GPUs, and prove quality improvements before deployment.
+
 ## Demo fallback note
 
 The Hugging Face Space uses deterministic local analysis by default so judges can test instantly even without provisioned AMD secrets. This is intentional product engineering: the public demo cannot fail because a GPU endpoint is cold or unavailable, while the architecture still cleanly supports AMD-backed inference.

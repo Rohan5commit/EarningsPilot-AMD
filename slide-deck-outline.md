@@ -28,7 +28,7 @@ Each agent has a narrow role and emits structured output.
 
 ## Slide 5 — AMD Developer Cloud Architecture
 
-Next.js app + typed orchestration + optional OpenAI-compatible endpoint backed by AMD Developer Cloud GPUs, ROCm, and open-source models such as Qwen, Llama, DeepSeek, or Mistral.
+Next.js app + typed orchestration + optional OpenAI-compatible endpoint backed by AMD Developer Cloud GPUs, ROCm, and open-source models such as Qwen, Llama, DeepSeek, or Mistral. Include the model-improvement loop: seed SFT data → LoRA on AMD → golden eval → endpoint deployment.
 
 ## Slide 6 — Live Demo Screens
 
@@ -47,7 +47,7 @@ Unlike a PDF chatbot, EarningsPilot AMD creates a structured research packet and
 
 ## Slide 9 — Benchmark / Workload Note
 
-Long financial documents create repeated inference calls. AMD GPU-backed open-source serving supports private, scalable, cost-conscious analysis.
+Long financial documents create repeated inference calls. AMD GPU-backed open-source serving supports private, scalable, cost-conscious analysis. Optional LoRA fine-tuning uses analyst corrections to improve JSON validity and evidence grounding.
 
 ## Slide 10 — Submission
 

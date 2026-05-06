@@ -50,17 +50,23 @@ EarningsPilot AMD is a polished, end-to-end multi-agent earnings and filings int
 │   ├── sample.ts
 │   ├── text.ts
 │   └── types.ts
+├── eval/
+│   └── golden-sample.json
 ├── sample-data/
 │   ├── atlas-components-earnings-transcript.txt
 │   ├── atlas-components-kpis.csv
 │   └── atlas-components-risk-factors.txt
 ├── scripts/
-│   └── analyze-sample.mjs
+│   ├── analyze-sample.mjs
+│   └── evaluate-sample.mjs
+├── training-data/
+│   └── earningspilot-sft.jsonl
 ├── architecture.md
 ├── benchmark-notes.md
 ├── demo-script.md
 ├── Dockerfile
 ├── final-submission-checklist.md
+├── finetuning.md
 ├── next.config.mjs
 ├── package.json
 ├── postcss.config.mjs
@@ -95,6 +101,24 @@ npm run dev
 ```
 
 Open <http://localhost:3000> and click **Run instant sample demo**.
+
+
+## Training and evaluation path
+
+The live demo does not depend on a freshly fine-tuned model because reliability matters for judges. Instead, EarningsPilot AMD ships a production-style model-improvement loop:
+
+- `training-data/earningspilot-sft.jsonl` contains seed supervised fine-tuning examples for KPI extraction, risk classification, thesis generation, tone assessment, and report writing.
+- `eval/golden-sample.json` defines golden expectations for the seeded demo package.
+- `scripts/evaluate-sample.mjs` runs an end-to-end regression check against a local or deployed app.
+- `finetuning.md` documents the AMD Developer Cloud LoRA/QLoRA path for Qwen, Llama, DeepSeek, or Mistral-family models.
+
+```bash
+# with the app running locally on port 3000
+npm run eval:sample
+
+# or against the production deployment
+EARNINGSPILOT_BASE_URL=https://earningspilot-amd.vercel.app npm run eval:sample
+```
 
 ## Optional AMD Developer Cloud model mode
 
