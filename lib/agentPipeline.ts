@@ -103,9 +103,10 @@ function thesis(findings: InternalFinding[], mode: 'bull' | 'bear'): ThesisPoint
     .map((finding) => ({ point: truncate(finding.sentence, 210), evidenceId: finding.evidenceId }));
 }
 
-async function optionalModelPass(prompt: string): Promise<string | null> {
+async function optionalModelPass(prompt: string): Promise<{ content: string; latencyMs: number } | null> {
   const env = openAICompatibleSchema.parse(process.env);
   if (!env.AMD_OPENAI_BASE_URL || !env.AMD_OPENAI_API_KEY) return null;
+  const started = Date.now();
   const response = await fetch(`${env.AMD_OPENAI_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -124,7 +125,8 @@ async function optionalModelPass(prompt: string): Promise<string | null> {
   });
   if (!response.ok) return null;
   const json = await response.json();
-  return json?.choices?.[0]?.message?.content ?? null;
+  const content = json?.choices?.[0]?.message?.content;
+  return typeof content === 'string' ? { content, latencyMs: Date.now() - started } : null;
 }
 
 export async function runEarningsPilot(documents: DocumentInput[]): Promise<AnalysisResult> {
@@ -173,7 +175,7 @@ export async function runEarningsPilot(documents: DocumentInput[]): Promise<Anal
   let actionMemo = `Action memo: keep ${company} on the active research list. Validate guidance durability, monitor capacity ramp milestones, compare data-center growth against customer concentration risk, and require evidence that elevated investment converts into free-cash-flow expansion.`;
   if (modelSummary) {
     try {
-      const parsed = JSON.parse(modelSummary) as { executiveSummary?: string[]; actionMemo?: string };
+      const parsed = JSON.parse(modelSummary.content) as { executiveSummary?: string[]; actionMemo?: string };
       if (Array.isArray(parsed.executiveSummary) && parsed.executiveSummary.length) executiveSummary = parsed.executiveSummary.slice(0, 4);
       if (parsed.actionMemo) actionMemo = parsed.actionMemo;
     } catch {
@@ -185,7 +187,18 @@ export async function runEarningsPilot(documents: DocumentInput[]): Promise<Anal
     company,
     ticker,
     generatedAt: new Date().toISOString(),
-    modelMode: process.env.AMD_OPENAI_BASE_URL ? 'amd-openai-compatible' : 'deterministic-local',
+    modelMode: modelSummary ? 'amd-openai-compatible' : 'deterministic-local',
+    amdRun: {
+      gpu: process.env.AMD_GPU_NAME || 'AMD Instinct MI300X',
+      model: process.env.AMD_MODEL_ID || 'Qwen/Qwen2.5-7B-Instruct',
+      endpointConfigured: Boolean(process.env.AMD_OPENAI_BASE_URL),
+      usedModelEndpoint: Boolean(modelSummary),
+      latencyMs: modelSummary?.latencyMs ?? null,
+      gpuHoursBudget: Number(process.env.AMD_GPU_HOURS_BUDGET || 40),
+      note: modelSummary
+        ? 'Report Agent synthesis used the AMD-hosted OpenAI-compatible model endpoint.'
+        : 'Deterministic fallback is active so the public demo remains reliable if the AMD endpoint is unavailable.'
+    },
     companyBrief: `${company}${ticker !== 'N/A' ? ` (${ticker})` : ''} was analyzed across ${cleaned.length} uploaded source${cleaned.length === 1 ? '' : 's'} using ${parserChunks.length} parsed chunks. The agent workflow prioritized source-grounded evidence over unsupported market claims.`,
     executiveSummary,
     kpis,

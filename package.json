@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "analyze:sample": "node scripts/analyze-sample.mjs",
-    "eval:sample": "node scripts/evaluate-sample.mjs"
+    "eval:sample": "node scripts/evaluate-sample.mjs",
+    "benchmark:amd": "node scripts/benchmark-amd-endpoint.mjs"
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.10",

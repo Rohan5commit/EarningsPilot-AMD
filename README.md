@@ -57,7 +57,9 @@ EarningsPilot AMD is a polished, end-to-end multi-agent earnings and filings int
 │   ├── atlas-components-kpis.csv
 │   └── atlas-components-risk-factors.txt
 ├── scripts/
+│   ├── amd/serve-qwen-vllm-rocm.sh
 │   ├── analyze-sample.mjs
+│   ├── benchmark-amd-endpoint.mjs
 │   └── evaluate-sample.mjs
 ├── training-data/
 │   └── earningspilot-sft.jsonl
@@ -65,6 +67,7 @@ EarningsPilot AMD is a polished, end-to-end multi-agent earnings and filings int
 ├── benchmark-notes.md
 ├── demo-script.md
 ├── Dockerfile
+├── amd-40-gpu-hour-runbook.md
 ├── final-submission-checklist.md
 ├── finetuning.md
 ├── gpu-training-plan.md
@@ -104,6 +107,24 @@ npm run dev
 Open <http://localhost:3000> and click **Run instant sample demo**.
 
 
+
+
+## 40 MI300X GPU-hour execution
+
+With a 40 AMD Instinct MI300X GPU-hour budget, the goal is no longer just an optional model path. The GPU plan is to produce live proof: AMD-hosted Qwen inference, an EarningsPilot-Qwen-7B-LoRA adapter run, endpoint benchmarks, and eval artifacts. The operational runbook is `amd-40-gpu-hour-runbook.md`.
+
+```bash
+# On the AMD GPU host after installing a ROCm-compatible vLLM environment
+AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/serve-qwen-vllm-rocm.sh
+
+# From a machine that can reach the endpoint
+AMD_OPENAI_BASE_URL=http://<gpu-host>:8000/v1 \
+AMD_OPENAI_API_KEY=<temporary-key> \
+AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct \
+npm run benchmark:amd
+```
+
+The app surfaces AMD run metadata in the analysis dashboard: GPU name, model ID, endpoint status, latency, and the 40 MI300X-hour budget.
 
 ## GPU and custom-model plan
 

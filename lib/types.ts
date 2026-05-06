@@ -44,6 +44,15 @@ export type AnalysisResult = {
   ticker: string;
   generatedAt: string;
   modelMode: 'deterministic-local' | 'amd-openai-compatible';
+  amdRun: {
+    gpu: string;
+    model: string;
+    endpointConfigured: boolean;
+    usedModelEndpoint: boolean;
+    latencyMs: number | null;
+    gpuHoursBudget: number;
+    note: string;
+  };
   companyBrief: string;
   executiveSummary: string[];
   kpis: Kpi[];
