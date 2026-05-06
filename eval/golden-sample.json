@@ -1,0 +1,22 @@
+{
+  "company": "Atlas Components",
+  "ticker": "ATLS",
+  "minimumKpis": 6,
+  "minimumRisks": 4,
+  "requiredRiskTitles": [
+    "Customer concentration exposure",
+    "Advanced packaging capacity bottleneck",
+    "Export control and trade restriction risk"
+  ],
+  "requiredKpiMetrics": [
+    "Revenue",
+    "Gross Margin",
+    "Free Cash Flow",
+    "Data Center Revenue"
+  ],
+  "requiredEvidenceAgents": [
+    "Parser Agent",
+    "KPI Extraction Agent",
+    "Risk Agent"
+  ]
+}

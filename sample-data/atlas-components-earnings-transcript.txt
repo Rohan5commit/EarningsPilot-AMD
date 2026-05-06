@@ -1,0 +1,11 @@
+Atlas Components (ATLS) Q4 FY25 Earnings Call
+
+CEO Maya Rao: We closed fiscal 2025 with revenue of $2.84 billion, up 18% year over year, driven by accelerated demand for AI server power modules and a recovery in industrial automation. Gross margin expanded to 43.2%, up 310 basis points from last year, as mix shifted toward higher-value data center products.
+
+CFO Daniel Kim: Operating cash flow was $412 million for the quarter and free cash flow was $286 million. Full-year revenue was $10.4 billion, up 15%. Data center revenue grew 41% year over year to $3.7 billion. Inventory days improved to 68 from 81 last quarter.
+
+CEO Maya Rao: Customers are asking us for more secure supply and faster qualification cycles. We signed two multi-year supply agreements with hyperscale customers, but we remain capacity constrained on advanced packaging through the first half of fiscal 2026.
+
+CFO Daniel Kim: For Q1 FY26, we expect revenue between $2.65 billion and $2.78 billion and gross margin near 42%. We expect elevated capital expenditures as we bring our Malaysia line online.
+
+Analyst Q&A: Management noted that pricing is stable in AI server modules, but consumer power products remain under pressure. The company is watching export controls, foundry cycle times, and customer concentration in cloud accounts.
