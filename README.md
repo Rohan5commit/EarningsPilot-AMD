@@ -128,6 +128,14 @@ npm run benchmark:amd
 
 The app surfaces AMD run metadata in the analysis dashboard: GPU name, model ID, endpoint status, latency, and the 40 MI300X-hour budget.
 
+To start the 15-hour training window on the AMD host:
+
+```bash
+TRAIN_HOURS=15 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+```
+
+This writes adapter artifacts to `artifacts/lora/earningspilot-qwen-7b-lora` and logs to `artifacts/logs/lora-train.log`.
+
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
 
 ## GPU and custom-model plan
