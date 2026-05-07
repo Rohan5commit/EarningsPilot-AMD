@@ -21,13 +21,17 @@ KEEP_CHECKPOINTS="${KEEP_CHECKPOINTS:-8}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-auto}"
 MIN_TRAIN_ROWS="${MIN_TRAIN_ROWS:-250000}"
 
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+if command -v python3.11 >/dev/null 2>&1 && [[ "${PYTHON_BIN}" == "python3" ]]; then
+  PYTHON_BIN="python3.11"
+fi
+
 if [[ ! -f "$TRAIN_FILE" ]]; then
   echo "[ERROR] Training file not found: $TRAIN_FILE" >&2
   exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
-mkdir -p artifacts/logs
+mkdir -p "$OUTPUT_DIR" artifacts/logs
 
 echo "[INFO] Starting time-boxed LoRA training"
 echo "[INFO] BASE_MODEL=$BASE_MODEL"
@@ -41,16 +45,11 @@ echo "[INFO] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
 echo "[INFO] MIN_TRAIN_ROWS=$MIN_TRAIN_ROWS"
 echo "[INFO] TRAIN_FILE_ROWS=$(wc -l < "$TRAIN_FILE" | tr -d ' ')"
 
-python3 -m pip install --upgrade pip
-python3 -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33"
+"$PYTHON_BIN" -m pip install --upgrade pip
+"$PYTHON_BIN" -m pip install "transformers>=4.45,<5" "peft>=0.12,<0.13" "accelerate>=1.1,<2"
 
 cat > "$OUTPUT_DIR/run_lora_sft.py" <<'PY'
 import json
-from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-import torch
-from peft import LoraConfig
-from trl import SFTTrainer
 import os
 from pathlib import Path
 
@@ -119,14 +118,24 @@ tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
+def _dtype():
+    return torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
 model = AutoModelForCausalLM.from_pretrained(
     base_model,
     trust_remote_code=True,
-    torch_dtype=torch.bfloat16,
+    dtype=_dtype(),
     low_cpu_mem_usage=False,
 )
+
 if torch.cuda.is_available():
     model = model.to("cuda")
+
+preferred_targets = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj", "c_attn", "c_proj"]
+module_names = {name.split(".")[-1] for name, _ in model.named_modules()}
+resolved_targets = [name for name in preferred_targets if name in module_names]
+if not resolved_targets:
+    raise ValueError(f"Could not resolve LoRA target modules from model. Available sample: {sorted(list(module_names))[:30]}")
 
 peft_config = LoraConfig(
     r=lora_r,
@@ -134,9 +143,29 @@ peft_config = LoraConfig(
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"],
+    target_modules=resolved_targets,
 )
+model = get_peft_model(model, peft_config)
+model.config.use_cache = False
 
+class CausalTextDataset(Dataset):
+    def __init__(self, samples, tokenizer, max_length=1024):
+        self.samples = []
+        for text in samples:
+            enc = tokenizer(text, truncation=True, max_length=max_length, padding="max_length", return_tensors="pt")
+            input_ids = enc["input_ids"][0]
+            attention_mask = enc["attention_mask"][0]
+            labels = input_ids.clone()
+            labels[attention_mask == 0] = -100
+            self.samples.append({"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels})
+    def __len__(self):
+        return len(self.samples)
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+dataset = CausalTextDataset(texts, tokenizer)
+
+use_cuda = torch.cuda.is_available()
 args = TrainingArguments(
     output_dir=output_dir,
     per_device_train_batch_size=batch_size,
@@ -149,9 +178,10 @@ args = TrainingArguments(
     save_steps=checkpoint_steps,
     save_total_limit=keep_checkpoints,
     fp16=False,
-    bf16=True,
+    bf16=use_cuda,
+    use_cpu=not use_cuda,
     dataloader_pin_memory=False,
-    gradient_checkpointing=True,
+    gradient_checkpointing=False,
     report_to="none",
 )
 
