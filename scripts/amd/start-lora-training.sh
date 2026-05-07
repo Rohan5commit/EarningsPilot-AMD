@@ -12,14 +12,21 @@ TRAIN_HOURS="${TRAIN_HOURS:-10}"
 MAX_STEPS="${MAX_STEPS:-100000}"
 LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
-BATCH_SIZE="${BATCH_SIZE:-1}"
-GRAD_ACCUM="${GRAD_ACCUM:-8}"
+BATCH_SIZE="${BATCH_SIZE:-4}"
+GRAD_ACCUM="${GRAD_ACCUM:-4}"
 LR="${LR:-2e-4}"
-CHECKPOINT_STEPS="${CHECKPOINT_STEPS:-250}"
-LOGGING_STEPS="${LOGGING_STEPS:-10}"
-KEEP_CHECKPOINTS="${KEEP_CHECKPOINTS:-8}"
+CHECKPOINT_STEPS="${CHECKPOINT_STEPS:-1000}"
+LOGGING_STEPS="${LOGGING_STEPS:-25}"
+KEEP_CHECKPOINTS="${KEEP_CHECKPOINTS:-6}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-auto}"
 MIN_TRAIN_ROWS="${MIN_TRAIN_ROWS:-250000}"
+MAX_LENGTH="${MAX_LENGTH:-512}"
+DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-2}"
+PIN_MEMORY="${PIN_MEMORY:-true}"
+ATTENTION_IMPL="${ATTENTION_IMPL:-sdpa}"
+COMPILE_MODEL="${COMPILE_MODEL:-false}"
+TOKEN_CACHE_LIMIT="${TOKEN_CACHE_LIMIT:-50000}"
+LOAD_IN_4BIT="${LOAD_IN_4BIT:-false}"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if command -v python3.11 >/dev/null 2>&1 && [[ "${PYTHON_BIN}" == "python3" ]]; then
@@ -44,9 +51,19 @@ echo "[INFO] KEEP_CHECKPOINTS=$KEEP_CHECKPOINTS"
 echo "[INFO] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
 echo "[INFO] MIN_TRAIN_ROWS=$MIN_TRAIN_ROWS"
 echo "[INFO] TRAIN_FILE_ROWS=$(wc -l < "$TRAIN_FILE" | tr -d ' ')"
+echo "[INFO] BATCH_SIZE=$BATCH_SIZE"
+echo "[INFO] GRAD_ACCUM=$GRAD_ACCUM"
+echo "[INFO] MAX_LENGTH=$MAX_LENGTH"
+echo "[INFO] DATALOADER_NUM_WORKERS=$DATALOADER_NUM_WORKERS"
+echo "[INFO] ATTENTION_IMPL=$ATTENTION_IMPL"
+echo "[INFO] COMPILE_MODEL=$COMPILE_MODEL"
+echo "[INFO] LOAD_IN_4BIT=$LOAD_IN_4BIT"
 
 "$PYTHON_BIN" -m pip install --upgrade pip
 "$PYTHON_BIN" -m pip install "transformers>=4.45,<5" "peft>=0.12,<0.13" "accelerate>=1.1,<2"
+if [[ "$LOAD_IN_4BIT" == "true" ]]; then
+  "$PYTHON_BIN" -m pip install "bitsandbytes>=0.43"
+fi
 
 cat > "$OUTPUT_DIR/run_lora_sft.py" <<'PY'
 import json
@@ -54,8 +71,7 @@ import os
 from pathlib import Path
 
 import torch
-from peft import LoraConfig, get_peft_model
-from torch.utils.data import IterableDataset
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
 base_model = os.environ.get("BASE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
@@ -72,6 +88,13 @@ logging_steps = int(os.environ.get("LOGGING_STEPS", "10"))
 keep_checkpoints = int(os.environ.get("KEEP_CHECKPOINTS", "8"))
 resume_setting = os.environ.get("RESUME_FROM_CHECKPOINT", "auto")
 min_train_rows = int(os.environ.get("MIN_TRAIN_ROWS", "250000"))
+max_length = int(os.environ.get("MAX_LENGTH", "512"))
+dataloader_num_workers = int(os.environ.get("DATALOADER_NUM_WORKERS", "2"))
+pin_memory = os.environ.get("PIN_MEMORY", "true").lower() == "true"
+attention_impl = os.environ.get("ATTENTION_IMPL", "sdpa")
+compile_model = os.environ.get("COMPILE_MODEL", "false").lower() == "true"
+token_cache_limit = int(os.environ.get("TOKEN_CACHE_LIMIT", "50000"))
+load_in_4bit = os.environ.get("LOAD_IN_4BIT", "false").lower() == "true"
 
 os.makedirs(output_dir, exist_ok=True)
 
@@ -121,17 +144,42 @@ tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-def _dtype():
-    return torch.bfloat16 if torch.cuda.is_available() else torch.float32
+print(f"[INFO] Pre-tokenizing up to {token_cache_limit} rows at max_length={max_length}", flush=True)
+features = []
+for row in rows[:token_cache_limit]:
+    enc = tokenizer(row_to_text(row), truncation=True, max_length=max_length, padding="max_length", return_tensors="pt")
+    input_ids = enc["input_ids"][0]
+    attention_mask = enc["attention_mask"][0]
+    labels = input_ids.clone()
+    labels[attention_mask == 0] = -100
+    features.append({"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels})
+if not features:
+    raise RuntimeError("No tokenized features were built")
+print(f"[INFO] Tokenized feature cache size={len(features)}", flush=True)
 
-model = AutoModelForCausalLM.from_pretrained(
-    base_model,
-    trust_remote_code=True,
-    torch_dtype=_dtype(),
-    low_cpu_mem_usage=False,
-)
+model_kwargs = {
+    "trust_remote_code": True,
+    "torch_dtype": torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+    "low_cpu_mem_usage": False,
+}
+if attention_impl and attention_impl.lower() not in {"default", "none", "false"}:
+    model_kwargs["attn_implementation"] = attention_impl
+if load_in_4bit:
+    try:
+        from transformers import BitsAndBytesConfig
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+        )
+        print("[INFO] LOAD_IN_4BIT=true; using BitsAndBytesConfig QLoRA path", flush=True)
+    except Exception as exc:
+        print(f"[WARN] LOAD_IN_4BIT requested but unavailable: {exc}; falling back to bf16 LoRA", flush=True)
 
-if torch.cuda.is_available():
+model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
+
+if torch.cuda.is_available() and not load_in_4bit:
     model = model.to("cuda")
 
 preferred_targets = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj", "c_attn", "c_proj"]
@@ -148,26 +196,24 @@ peft_config = LoraConfig(
     task_type="CAUSAL_LM",
     target_modules=resolved_targets,
 )
+if load_in_4bit:
+    model = prepare_model_for_kbit_training(model)
 model = get_peft_model(model, peft_config)
 model.config.use_cache = False
+if compile_model and hasattr(torch, "compile"):
+    print("[INFO] Compiling model with torch.compile", flush=True)
+    model = torch.compile(model)
 
-class CyclingCausalDataset(IterableDataset):
-    def __init__(self, rows, tokenizer, max_length=1024):
-        self.rows = rows
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-    def __iter__(self):
-        while True:
-            for row in self.rows:
-                text = row_to_text(row)
-                enc = self.tokenizer(text, truncation=True, max_length=self.max_length, padding="max_length", return_tensors="pt")
-                input_ids = enc["input_ids"][0]
-                attention_mask = enc["attention_mask"][0]
-                labels = input_ids.clone()
-                labels[attention_mask == 0] = -100
-                yield {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+class RepeatingTokenizedDataset(torch.utils.data.Dataset):
+    def __init__(self, features, length):
+        self.features = features
+        self.length = max(int(length), len(features))
+    def __len__(self):
+        return self.length
+    def __getitem__(self, idx):
+        return self.features[idx % len(self.features)]
 
-dataset = CyclingCausalDataset(rows, tokenizer)
+dataset = RepeatingTokenizedDataset(features, effective_rows)
 
 use_cuda = torch.cuda.is_available()
 args = TrainingArguments(
@@ -184,7 +230,8 @@ args = TrainingArguments(
     fp16=False,
     bf16=use_cuda,
     use_cpu=not use_cuda,
-    dataloader_pin_memory=False,
+    dataloader_num_workers=dataloader_num_workers,
+    dataloader_pin_memory=pin_memory,
     gradient_checkpointing=False,
     report_to="none",
 )
@@ -212,13 +259,20 @@ with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
         "target_modules": resolved_targets,
         "trainer": "transformers.Trainer",
         "checkpoint_steps": checkpoint_steps,
+        "max_length": max_length,
+        "dataloader_num_workers": dataloader_num_workers,
+        "pin_memory": pin_memory,
+        "attention_impl": attention_impl,
+        "compile_model": compile_model,
+        "token_cache_size": len(features),
+        "load_in_4bit": load_in_4bit,
         "logging_steps": logging_steps,
         "keep_checkpoints": keep_checkpoints,
         "resume_from_checkpoint": resume_checkpoint,
     }, f, indent=2)
 PY
 
-export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA CHECKPOINT_STEPS LOGGING_STEPS KEEP_CHECKPOINTS RESUME_FROM_CHECKPOINT MIN_TRAIN_ROWS
+export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA CHECKPOINT_STEPS LOGGING_STEPS KEEP_CHECKPOINTS RESUME_FROM_CHECKPOINT MIN_TRAIN_ROWS MAX_LENGTH DATALOADER_NUM_WORKERS PIN_MEMORY ATTENTION_IMPL COMPILE_MODEL TOKEN_CACHE_LIMIT LOAD_IN_4BIT
 
 # Use SIGINT first so Transformers has a chance to unwind cleanly; periodic checkpoints are the durable resume boundary.
 set +e
