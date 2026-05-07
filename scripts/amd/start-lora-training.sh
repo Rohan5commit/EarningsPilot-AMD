@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# EarningsPilot AMD - time-boxed LoRA/QLoRA runner for AMD MI300X hosts
-# Usage:
-#   TRAIN_HOURS=15 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
-
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-training-data/earningspilot-sft.jsonl}"
 OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora}"
@@ -16,32 +12,31 @@ BATCH_SIZE="${BATCH_SIZE:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
 LR="${LR:-2e-4}"
 
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+if command -v python3.11 >/dev/null 2>&1 && [[ "${PYTHON_BIN}" == "python3" ]]; then
+  PYTHON_BIN="python3.11"
+fi
+
 if [[ ! -f "$TRAIN_FILE" ]]; then
   echo "[ERROR] Training file not found: $TRAIN_FILE" >&2
   exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
-mkdir -p artifacts/logs
+mkdir -p "$OUTPUT_DIR" artifacts/logs
 
 echo "[INFO] Starting time-boxed LoRA training"
-echo "[INFO] BASE_MODEL=$BASE_MODEL"
-echo "[INFO] TRAIN_FILE=$TRAIN_FILE"
-echo "[INFO] OUTPUT_DIR=$OUTPUT_DIR"
-echo "[INFO] TRAIN_HOURS=$TRAIN_HOURS"
-echo "[INFO] MAX_STEPS=$MAX_STEPS"
+echo "[INFO] PYTHON_BIN=$PYTHON_BIN"
 
-python3 -m pip install --upgrade pip
-python3 -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33"
+"$PYTHON_BIN" -m pip install --upgrade pip
+"$PYTHON_BIN" -m pip install "transformers>=4.45,<5" "peft>=0.12,<0.13" "accelerate>=1.1,<2"
 
 cat > "$OUTPUT_DIR/run_lora_sft.py" <<'PY'
 import json
-from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-import torch
-from peft import LoraConfig
-from trl import SFTTrainer
 import os
+import torch
+from torch.utils.data import Dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
+from peft import LoraConfig, get_peft_model
 
 base_model = os.environ.get("BASE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 train_file = os.environ.get("TRAIN_FILE", "training-data/earningspilot-sft.jsonl")
@@ -55,27 +50,45 @@ lora_alpha = int(os.environ.get("LORA_ALPHA", "32"))
 
 os.makedirs(output_dir, exist_ok=True)
 
-dataset = load_dataset("json", data_files=train_file, split="train")
+def read_text_rows(path: str):
+    rows = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            ex = json.loads(line)
+            messages = ex.get("messages", [])
+            text = "\n".join([f"{m['role']}: {m['content']}" for m in messages if 'role' in m and 'content' in m])
+            if text:
+                rows.append(text)
+    if not rows:
+        raise ValueError("No training rows found in training file")
+    return rows
 
-def to_text(ex):
-    messages = ex.get("messages", [])
-    text = "\n".join([f"{m['role']}: {m['content']}" for m in messages if 'role' in m and 'content' in m])
-    return {"text": text}
-
-dataset = dataset.map(to_text)
-
+texts = read_text_rows(train_file)
 tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
+def _dtype():
+    return torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
 model = AutoModelForCausalLM.from_pretrained(
     base_model,
     trust_remote_code=True,
-    torch_dtype=torch.bfloat16,
+    dtype=_dtype(),
     low_cpu_mem_usage=False,
 )
+
 if torch.cuda.is_available():
     model = model.to("cuda")
+
+preferred_targets = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj", "c_attn", "c_proj"]
+module_names = {name.split(".")[-1] for name, _ in model.named_modules()}
+resolved_targets = [name for name in preferred_targets if name in module_names]
+if not resolved_targets:
+    raise ValueError(f"Could not resolve LoRA target modules from model. Available sample: {sorted(list(module_names))[:30]}")
 
 peft_config = LoraConfig(
     r=lora_r,
@@ -83,9 +96,29 @@ peft_config = LoraConfig(
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"],
+    target_modules=resolved_targets,
 )
+model = get_peft_model(model, peft_config)
+model.config.use_cache = False
 
+class CausalTextDataset(Dataset):
+    def __init__(self, samples, tokenizer, max_length=1024):
+        self.samples = []
+        for text in samples:
+            enc = tokenizer(text, truncation=True, max_length=max_length, padding="max_length", return_tensors="pt")
+            input_ids = enc["input_ids"][0]
+            attention_mask = enc["attention_mask"][0]
+            labels = input_ids.clone()
+            labels[attention_mask == 0] = -100
+            self.samples.append({"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels})
+    def __len__(self):
+        return len(self.samples)
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+dataset = CausalTextDataset(texts, tokenizer)
+
+use_cuda = torch.cuda.is_available()
 args = TrainingArguments(
     output_dir=output_dir,
     per_device_train_batch_size=batch_size,
@@ -96,23 +129,16 @@ args = TrainingArguments(
     save_steps=100,
     save_total_limit=2,
     fp16=False,
-    bf16=True,
+    bf16=use_cuda,
+    use_cpu=not use_cuda,
     dataloader_pin_memory=False,
-    gradient_checkpointing=True,
+    gradient_checkpointing=False,
     report_to="none",
 )
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    peft_config=peft_config,
-    args=args,
-)
-
+trainer = Trainer(model=model, args=args, train_dataset=dataset)
 trainer.train()
-trainer.model.save_pretrained(output_dir)
+model.save_pretrained(output_dir)
 tokenizer.save_pretrained(output_dir)
 
 with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
@@ -131,8 +157,6 @@ PY
 
 export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA
 
-timeout "${TRAIN_HOURS}h" python3 "$OUTPUT_DIR/run_lora_sft.py" 2>&1 | tee "artifacts/logs/lora-train.log"
+timeout "${TRAIN_HOURS}h" "$PYTHON_BIN" "$OUTPUT_DIR/run_lora_sft.py" 2>&1 | tee "artifacts/logs/lora-train.log"
 
 echo "[INFO] Training time-box completed (or process exited)."
-echo "[INFO] Adapter artifacts: $OUTPUT_DIR"
-echo "[INFO] Log file: artifacts/logs/lora-train.log"
