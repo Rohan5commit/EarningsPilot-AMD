@@ -110,6 +110,10 @@ For the 9-hour rescue run, the fastest safe optimization is not more synthetic r
 
 After the adapter reaches the target checkpoint, stop training and run:
 
+The active AMD launchers now avoid `trl.SFTTrainer` API drift by using `transformers.Trainer` directly. They apply LoRA with PEFT first, pre-tokenize a bounded cache, and then train against a repeating map-style dataset so throughput is controlled by `MAX_STEPS`, `BATCH_SIZE`, `MAX_LENGTH`, and the wall-clock timeout.
+
+Key defaults for the 9-hour rescue run:
+
 ```bash
 EARNINGSPILOT_BASE_URL=https://earningspilot-amd.vercel.app AMD_OPENAI_BASE_URL=http://127.0.0.1:8000/v1 AMD_OPENAI_API_KEY=epamd-temp-key AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced LOG_FILE=artifacts/logs/lora-train-forced-10h.log ./scripts/amd/post-training-eval.sh
 ```
