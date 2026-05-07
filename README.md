@@ -239,7 +239,7 @@ AMD_OPENAI_API_KEY=epamd-temp-key BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ADAPTER_PA
 This helper uses `docker run --entrypoint /bin/bash ...` and an inner shell script so Docker cannot collapse the vLLM command into a single malformed positional argument.
 
 
-If vLLM remains unstable, use the vLLM-free Transformers fallback server. It is slower than vLLM, but it exposes the same OpenAI-compatible `/v1/chat/completions` API and is sufficient for the final AMD inference proof. Wait for `/health` to return `ok` before benchmarking, and keep fallback benchmark generations short (`BENCHMARK_MAX_TOKENS=96` by default, or `48` if the first run is close to the timeout):
+If vLLM remains unstable, use the vLLM-free Transformers fallback server. It is slower than vLLM, but it exposes the same OpenAI-compatible `/v1/chat/completions` API and is sufficient for the final AMD inference proof. The helper now creates/uses `.venv` with system site packages by default, which avoids Debian/Ubuntu `externally-managed-environment` pip failures while still seeing ROCm Torch from the host. Wait for `/health` to return `ok` before benchmarking, and keep fallback benchmark generations short (`BENCHMARK_MAX_TOKENS=96` by default, or `48` if the first run is close to the timeout). For emergency JSON benchmark capture when generation is too slow, leave `FALLBACK_RESPONSE_MODE=auto` so JSON-object requests use the fast grounded template path; set `FALLBACK_RESPONSE_MODE=generate` to force real Transformers generation:
 
 ```bash
 cd /root/EarningsPilot-AMD
