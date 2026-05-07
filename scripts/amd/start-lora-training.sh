@@ -32,12 +32,13 @@ echo "[INFO] TRAIN_HOURS=$TRAIN_HOURS"
 echo "[INFO] MAX_STEPS=$MAX_STEPS"
 
 python3 -m pip install --upgrade pip
-python3 -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33" bitsandbytes
+python3 -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33"
 
 cat > "$OUTPUT_DIR/run_lora_sft.py" <<'PY'
 import json
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+import torch
 from peft import LoraConfig
 from trl import SFTTrainer
 import os
@@ -67,7 +68,14 @@ tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
-model = AutoModelForCausalLM.from_pretrained(base_model, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(
+    base_model,
+    trust_remote_code=True,
+    torch_dtype=torch.bfloat16,
+    low_cpu_mem_usage=False,
+)
+if torch.cuda.is_available():
+    model = model.to("cuda")
 
 peft_config = LoraConfig(
     r=lora_r,
@@ -75,6 +83,7 @@ peft_config = LoraConfig(
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"],
 )
 
 args = TrainingArguments(
@@ -88,6 +97,8 @@ args = TrainingArguments(
     save_total_limit=2,
     fp16=False,
     bf16=True,
+    dataloader_pin_memory=False,
+    gradient_checkpointing=True,
     report_to="none",
 )
 
