@@ -59,12 +59,14 @@ export async function GET() {
       status: 'AMD endpoint reachable and healthy.'
     });
   } catch (error) {
+    console.error('AMD health check failed:', error);
+
     return NextResponse.json({
       connected: false,
       configured: true,
       model,
       latencyMs: null,
-      status: error instanceof Error ? error.message : 'Unknown AMD endpoint error.'
+      status: 'Unable to reach AMD endpoint.'
     });
   }
 }
