@@ -238,6 +238,14 @@ AMD_OPENAI_API_KEY=epamd-temp-key BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ADAPTER_PA
 
 This helper uses `docker run --entrypoint /bin/bash ...` and an inner shell script so Docker cannot collapse the vLLM command into a single malformed positional argument.
 
+
+If vLLM remains unstable, use the vLLM-free Transformers fallback server. It is slower than vLLM, but it exposes the same OpenAI-compatible `/v1/chat/completions` API and is sufficient for the final AMD inference proof:
+
+```bash
+cd /root/EarningsPilot-AMD
+AMD_OPENAI_API_KEY=epamd-temp-key BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ADAPTER_PATH=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA HOST=0.0.0.0 PORT=8000 MAX_MODEL_LEN=2048 MAX_NEW_TOKENS_DEFAULT=128 ./scripts/amd/serve-transformers-openai-rocm.sh
+```
+
 After stopping training, collect evaluation and submission artifacts with:
 
 ```bash

@@ -114,6 +114,9 @@ For `vllm/vllm-openai-rocm` images, launch from inside the running container she
 
 If the existing one-click container still rejects arguments, use `./scripts/amd/run-vllm-rocm-container.sh` from the host. It starts a fresh `vllm/vllm-openai-rocm:latest` container with `--entrypoint /bin/bash`, mounts the repo, writes an inner command script, and launches `vllm serve` from an argv array so the Docker entrypoint cannot collapse arguments.
 
+
+If vLLM remains blocked by container entrypoint issues, use `./scripts/amd/serve-transformers-openai-rocm.sh`. It loads the base model plus optional PEFT adapter with Transformers/FastAPI and exposes the same OpenAI-compatible `/v1/models` and `/v1/chat/completions` endpoints expected by `npm run benchmark:amd`.
+
 ## Post-training evaluation handoff
 
 After the adapter reaches the target checkpoint, stop training and run:
