@@ -3,10 +3,10 @@ set -euo pipefail
 
 # EarningsPilot AMD - time-boxed LoRA/QLoRA runner for AMD MI300X hosts
 # Usage:
-#   TRAIN_HOURS=15 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+#   TRAIN_HOURS=10 MAX_STEPS=20000 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
 
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
-TRAIN_FILE="${TRAIN_FILE:-training-data/earningspilot-sft.jsonl}"
+TRAIN_FILE="${TRAIN_FILE:-training-data/earningspilot-sft-expanded.jsonl}"
 OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora}"
 TRAIN_HOURS="${TRAIN_HOURS:-15}"
 MAX_STEPS="${MAX_STEPS:-800}"

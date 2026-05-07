@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "analyze:sample": "node scripts/analyze-sample.mjs",
     "eval:sample": "node scripts/evaluate-sample.mjs",
-    "benchmark:amd": "node scripts/benchmark-amd-endpoint.mjs"
+    "benchmark:amd": "node scripts/benchmark-amd-endpoint.mjs",
+    "generate:sft": "node scripts/generate-sft-dataset.mjs"
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.10",
