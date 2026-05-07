@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowUpRight, BarChart3, BrainCircuit, CheckCircle2, FileText, Loader2, Rocket, ShieldAlert, Sparkles, UploadCloud } from 'lucide-react';
 import { Badge } from '@/components/Badge';
 import { Section } from '@/components/Section';
@@ -17,6 +17,7 @@ export default function Home() {
   const [selectedEvidence, setSelectedEvidence] = useState<Evidence | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [error, setError] = useState('');
+  const [amdHealth, setAmdHealth] = useState<{ connected: boolean; configured: boolean; model: string; latencyMs: number | null; status: string } | null>(null);
 
   const canAnalyze = files.length > 0 || manualText.trim().length > 20;
 
@@ -62,6 +63,24 @@ export default function Home() {
     setStatus('idle');
   }
 
+
+  useEffect(() => {
+    let active = true;
+    async function loadAmdHealth() {
+      try {
+        const response = await fetch('/api/amd-health');
+        const json = await response.json();
+        if (active) setAmdHealth(json);
+      } catch {
+        if (active) setAmdHealth({ connected: false, configured: false, model: 'Qwen/Qwen2.5-7B-Instruct', latencyMs: null, status: 'AMD health check unavailable from this environment.' });
+      }
+    }
+    loadAmdHealth();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const riskTone = useMemo(() => {
     if (!result) return 'neutral';
     if (result.tone.label === 'Constructive') return 'green';
@@ -82,9 +101,12 @@ export default function Home() {
               <p className="text-xs text-slate-400">Agentic filings intelligence</p>
             </div>
           </div>
-          <a href="https://www.amd.com/en/developer/cloud.html" target="_blank" className="hidden items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:border-emerald-300/40 sm:flex">
-            AMD Developer Cloud <ArrowUpRight className="h-4 w-4" />
-          </a>
+          <div className="hidden items-center gap-3 sm:flex">
+            {amdHealth ? <Badge tone={amdHealth.connected ? 'green' : amdHealth.configured ? 'amber' : 'neutral'}>{amdHealth.connected ? `AMD Live · ${amdHealth.latencyMs ?? '?'} ms` : amdHealth.configured ? 'AMD Configured · Fallback' : 'AMD Not Configured'}</Badge> : null}
+            <a href="https://www.amd.com/en/developer/cloud.html" target="_blank" className="items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 hover:border-emerald-300/40 sm:flex">
+              AMD Developer Cloud <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </div>
         </nav>
 
         <section className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
@@ -178,6 +200,7 @@ export default function Home() {
                   <p><span className="font-bold text-white">Model:</span> {result.amdRun.model}</p>
                   <p><span className="font-bold text-white">Endpoint:</span> {result.amdRun.usedModelEndpoint ? 'AMD model endpoint used' : result.amdRun.endpointConfigured ? 'Configured, fallback used' : 'Not configured in public demo'}</p>
                   <p><span className="font-bold text-white">Latency:</span> {result.amdRun.latencyMs ? `${result.amdRun.latencyMs} ms` : 'fallback mode'}</p>
+                  {amdHealth ? <p><span className="font-bold text-white">Health:</span> {amdHealth.status}</p> : null}
                   <p className="rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-emerald-100">{result.amdRun.note}</p>
                 </div>
               </Section>
