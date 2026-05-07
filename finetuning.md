@@ -74,6 +74,23 @@ BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
 
 The launcher saves every `CHECKPOINT_STEPS` optimizer steps and resumes from the newest `checkpoint-*` directory when `RESUME_FROM_CHECKPOINT=auto`. Use `./scripts/amd/training-progress.sh` to print the latest checkpoint step, percent progress against `MAX_STEPS`, the last Trainer log entry, and the last 30 log lines.
 
+
+
+Emergency forced wall-clock run if the host keeps executing a short smoke path:
+
+```bash
+TRAIN_HOURS=10 \
+MAX_STEPS=100000000 \
+MIN_TRAIN_ROWS=1000000 \
+CHECKPOINT_STEPS=100 \
+KEEP_CHECKPOINTS=24 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-forced-10h-training.sh
+```
+
 ## Example TRL / PEFT recipe
 
 > Treat this as the production recipe for AMD Developer Cloud, not something required for the deterministic public demo.

@@ -154,6 +154,25 @@ cd /root/EarningsPilot-AMD
 OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h ./scripts/amd/training-progress.sh
 ```
 
+
+
+If the host still appears to run an old smoke path, use the emergency forced launcher instead. It materializes a large JSONL file on disk before Trainer starts, refuses datasets under 100,000 rows, and writes separate logs so a 5-row smoke run cannot masquerade as the real run:
+
+```bash
+cd /root/EarningsPilot-AMD
+git pull
+TRAIN_HOURS=10 \
+MAX_STEPS=100000000 \
+MIN_TRAIN_ROWS=1000000 \
+CHECKPOINT_STEPS=100 \
+KEEP_CHECKPOINTS=24 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-forced-10h-training.sh
+```
+
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
 
 ## GPU and custom-model plan
