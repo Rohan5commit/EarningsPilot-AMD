@@ -21,11 +21,11 @@ The project now assumes a 40 AMD Instinct MI300X GPU-hour ceiling. Spend it on v
 
 - 4 hours: ROCm/vLLM bring-up and Qwen endpoint smoke test.
 - 4 hours: app integration and `amd-openai-compatible` mode validation.
-- 16 hours: two LoRA/QLoRA adapter attempts for EarningsPilot-Qwen-7B-LoRA.
-- 4 hours: serve the best base/adapted model endpoint.
-- 4 hours: benchmark endpoint latency and output throughput with `npm run benchmark:amd`.
+- 15 hours: time-boxed LoRA/QLoRA adapter training for EarningsPilot-Qwen-7B-LoRA.
+- 5 hours: serve the best base/adapted model endpoint and stability checks.
+- 5 hours: benchmark endpoint latency and output throughput with `npm run benchmark:amd`.
 - 4 hours: run golden eval and capture screenshots/video proof.
-- 4 hours: contingency and final demo capture.
+- 4 hours: contingency and final demo capture plus relaunch buffer.
 
 Use `amd-40-gpu-hour-runbook.md` as the operating checklist.
 
@@ -56,6 +56,24 @@ Track:
 - Output tokens per second
 - GPU utilization
 - Cost per analyzed filing packet
+
+## Observed MI300X benchmark run (May 7, 2026)
+
+From a live AMD endpoint (`http://127.0.0.1:8000/v1`) using `Qwen/Qwen2.5-7B-Instruct` on AMD Instinct MI300X:
+
+- `status`: pass
+- `runs`: 3
+- `avgLatencyMs`: 391
+- `avgOutputCharsPerSecond`: 789
+- per-run latency: 408 ms, 385 ms, 380 ms
+
+Related end-to-end app validation from the same run:
+
+- `modelMode`: `amd-openai-compatible`
+- Golden eval: pass
+- Observed extraction: 8 KPIs, 5 risks, 32 evidence items
+
+These metrics are suitable as submission evidence that EarningsPilot AMD was run against a real AMD GPU-backed endpoint, not only deterministic fallback mode.
 
 ## Why AMD matters
 
