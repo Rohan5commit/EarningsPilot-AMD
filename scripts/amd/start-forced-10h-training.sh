@@ -82,7 +82,7 @@ fi
 
 echo "[INFO] Installing training dependencies..."
 "$PYTHON_BIN" -m pip install --upgrade pip
-"$PYTHON_BIN" -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33"
+"$PYTHON_BIN" -m pip install "transformers>=4.45,<5" "peft>=0.12,<0.13" "accelerate>=1.1,<2"
 
 cat > "$OUTPUT_DIR/run_forced_lora_sft.py" <<'PY'
 import json
@@ -90,10 +90,9 @@ import os
 from pathlib import Path
 
 import torch
-from datasets import load_dataset
-from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-from trl import SFTTrainer
+from peft import LoraConfig, get_peft_model
+from torch.utils.data import IterableDataset
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 
 base_model = os.environ["BASE_MODEL"]
 train_file = os.environ["EXPANDED_TRAIN_FILE"]
@@ -108,6 +107,7 @@ checkpoint_steps = int(os.environ["CHECKPOINT_STEPS"])
 logging_steps = int(os.environ["LOGGING_STEPS"])
 keep_checkpoints = int(os.environ["KEEP_CHECKPOINTS"])
 resume_setting = os.environ.get("RESUME_FROM_CHECKPOINT", "auto")
+max_length = int(os.environ.get("MAX_LENGTH", "1024"))
 
 os.makedirs(output_dir, exist_ok=True)
 
@@ -127,31 +127,60 @@ if resume_setting.lower() == "auto":
 elif resume_setting.lower() not in {"", "false", "none", "0"}:
     resume_checkpoint = resume_setting
 
+row_count = sum(1 for _ in open(train_file, "r"))
 print(f"[INFO] Loading materialized train_file={train_file}", flush=True)
-dataset = load_dataset("json", data_files=train_file, split="train")
-row_count = len(dataset)
 print(f"[INFO] Loaded dataset rows={row_count}", flush=True)
 if row_count < 100000:
     raise RuntimeError(f"Refusing short run: dataset has only {row_count} rows")
 
-def to_text(ex):
-    messages = ex.get("messages", [])
-    return {"text": "\n".join(f"{m['role']}: {m['content']}" for m in messages if "role" in m and "content" in m)}
-
-dataset = dataset.map(to_text, desc="Formatting chat rows")
+def row_to_text(row):
+    messages = row.get("messages", [])
+    return "\n".join(f"{m['role']}: {m['content']}" for m in messages if "role" in m and "content" in m)
 
 tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
+class CyclingJsonlCausalDataset(IterableDataset):
+    def __init__(self, path, tokenizer, max_length=1024):
+        self.path = path
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __iter__(self):
+        while True:
+            with open(self.path, "r") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    text = row_to_text(json.loads(line))
+                    enc = self.tokenizer(
+                        text,
+                        truncation=True,
+                        max_length=self.max_length,
+                        padding="max_length",
+                        return_tensors="pt",
+                    )
+                    input_ids = enc["input_ids"][0]
+                    attention_mask = enc["attention_mask"][0]
+                    labels = input_ids.clone()
+                    labels[attention_mask == 0] = -100
+                    yield {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+
 model = AutoModelForCausalLM.from_pretrained(
     base_model,
     trust_remote_code=True,
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
     low_cpu_mem_usage=False,
 )
 if torch.cuda.is_available():
     model = model.to("cuda")
+
+preferred_targets = ["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj", "c_attn", "c_proj"]
+module_names = {name.split(".")[-1] for name, _ in model.named_modules()}
+resolved_targets = [name for name in preferred_targets if name in module_names]
+if not resolved_targets:
+    raise ValueError(f"Could not resolve LoRA target modules from model. Available sample: {sorted(list(module_names))[:30]}")
 
 peft_config = LoraConfig(
     r=lora_r,
@@ -159,37 +188,34 @@ peft_config = LoraConfig(
     lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"],
+    target_modules=resolved_targets,
 )
+model = get_peft_model(model, peft_config)
+model.config.use_cache = False
 
+use_cuda = torch.cuda.is_available()
 args = TrainingArguments(
     output_dir=output_dir,
     per_device_train_batch_size=batch_size,
     gradient_accumulation_steps=grad_accum,
     learning_rate=learning_rate,
     max_steps=max_steps,
-    num_train_epochs=1000000,
     logging_steps=logging_steps,
     save_strategy="steps",
     save_steps=checkpoint_steps,
     save_total_limit=keep_checkpoints,
     fp16=False,
-    bf16=True,
+    bf16=use_cuda,
+    use_cpu=not use_cuda,
     dataloader_pin_memory=False,
-    gradient_checkpointing=True,
+    gradient_checkpointing=False,
     report_to="none",
 )
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    peft_config=peft_config,
-    args=args,
-)
+train_dataset = CyclingJsonlCausalDataset(train_file, tokenizer, max_length=max_length)
+trainer = Trainer(model=model, train_dataset=train_dataset, args=args)
 
-print(f"[INFO] Starting trainer.train(max_steps={max_steps}, resume={resume_checkpoint})", flush=True)
+print(f"[INFO] Starting Trainer.train(max_steps={max_steps}, resume={resume_checkpoint})", flush=True)
 trainer.train(resume_from_checkpoint=resume_checkpoint)
 trainer.model.save_pretrained(output_dir)
 tokenizer.save_pretrained(output_dir)
@@ -206,11 +232,14 @@ with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
         "gradient_accumulation_steps": grad_accum,
         "lora_r": lora_r,
         "lora_alpha": lora_alpha,
+        "target_modules": resolved_targets,
         "checkpoint_steps": checkpoint_steps,
         "logging_steps": logging_steps,
         "keep_checkpoints": keep_checkpoints,
         "resume_from_checkpoint": resume_checkpoint,
+        "trainer": "transformers.Trainer",
     }, f, indent=2)
+
 PY
 
 export BASE_MODEL EXPANDED_TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA CHECKPOINT_STEPS LOGGING_STEPS KEEP_CHECKPOINTS RESUME_FROM_CHECKPOINT

@@ -53,6 +53,11 @@ import json
 import os
 from pathlib import Path
 
+import torch
+from peft import LoraConfig, get_peft_model
+from torch.utils.data import IterableDataset
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+
 base_model = os.environ.get("BASE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 train_file = os.environ.get("TRAIN_FILE", "training-data/earningspilot-sft-10h.jsonl")
 output_dir = os.environ.get("OUTPUT_DIR", "artifacts/lora/earningspilot-qwen-7b-lora-10h")
@@ -95,24 +100,22 @@ if resume_checkpoint:
 else:
     print("[INFO] Starting without checkpoint resume", flush=True)
 
-dataset = load_dataset("json", data_files=train_file, split="train")
-original_rows = len(dataset)
+rows = []
+with open(train_file, "r") as f:
+    rows = [json.loads(line) for line in f if line.strip()]
+original_rows = len(rows)
 if original_rows <= 0:
     raise RuntimeError(f"Training file has no rows: {train_file}")
 if original_rows < min_train_rows:
-    print(f"[INFO] Expanding training dataset from {original_rows} to {min_train_rows} rows by deterministic repetition", flush=True)
-    dataset = dataset.select([i % original_rows for i in range(min_train_rows)])
+    print(f"[INFO] Expanding training dataset from {original_rows} to {min_train_rows} effective rows by deterministic cycling", flush=True)
 else:
-    print(f"[INFO] Training dataset rows: {original_rows}; no repetition needed", flush=True)
-effective_rows = len(dataset)
+    print(f"[INFO] Training dataset rows: {original_rows}; cycling enabled for max_steps", flush=True)
+effective_rows = max(original_rows, min_train_rows)
 print(f"[INFO] Effective training rows: {effective_rows}", flush=True)
 
-def to_text(ex):
-    messages = ex.get("messages", [])
-    text = "\n".join([f"{m['role']}: {m['content']}" for m in messages if 'role' in m and 'content' in m])
-    return {"text": text}
-
-dataset = dataset.map(to_text)
+def row_to_text(row):
+    messages = row.get("messages", [])
+    return "\n".join([f"{m['role']}: {m['content']}" for m in messages if 'role' in m and 'content' in m])
 
 tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 if tokenizer.pad_token is None:
@@ -124,7 +127,7 @@ def _dtype():
 model = AutoModelForCausalLM.from_pretrained(
     base_model,
     trust_remote_code=True,
-    dtype=_dtype(),
+    torch_dtype=_dtype(),
     low_cpu_mem_usage=False,
 )
 
@@ -148,22 +151,23 @@ peft_config = LoraConfig(
 model = get_peft_model(model, peft_config)
 model.config.use_cache = False
 
-class CausalTextDataset(Dataset):
-    def __init__(self, samples, tokenizer, max_length=1024):
-        self.samples = []
-        for text in samples:
-            enc = tokenizer(text, truncation=True, max_length=max_length, padding="max_length", return_tensors="pt")
-            input_ids = enc["input_ids"][0]
-            attention_mask = enc["attention_mask"][0]
-            labels = input_ids.clone()
-            labels[attention_mask == 0] = -100
-            self.samples.append({"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels})
-    def __len__(self):
-        return len(self.samples)
-    def __getitem__(self, idx):
-        return self.samples[idx]
+class CyclingCausalDataset(IterableDataset):
+    def __init__(self, rows, tokenizer, max_length=1024):
+        self.rows = rows
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+    def __iter__(self):
+        while True:
+            for row in self.rows:
+                text = row_to_text(row)
+                enc = self.tokenizer(text, truncation=True, max_length=self.max_length, padding="max_length", return_tensors="pt")
+                input_ids = enc["input_ids"][0]
+                attention_mask = enc["attention_mask"][0]
+                labels = input_ids.clone()
+                labels[attention_mask == 0] = -100
+                yield {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
-dataset = CausalTextDataset(texts, tokenizer)
+dataset = CyclingCausalDataset(rows, tokenizer)
 
 use_cuda = torch.cuda.is_available()
 args = TrainingArguments(
@@ -185,14 +189,7 @@ args = TrainingArguments(
     report_to="none",
 )
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    peft_config=peft_config,
-    args=args,
-)
+trainer = Trainer(model=model, train_dataset=dataset, args=args)
 
 trainer.train(resume_from_checkpoint=resume_checkpoint)
 trainer.model.save_pretrained(output_dir)
@@ -212,6 +209,8 @@ with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
         "gradient_accumulation_steps": grad_accum,
         "lora_r": lora_r,
         "lora_alpha": lora_alpha,
+        "target_modules": resolved_targets,
+        "trainer": "transformers.Trainer",
         "checkpoint_steps": checkpoint_steps,
         "logging_steps": logging_steps,
         "keep_checkpoints": keep_checkpoints,
