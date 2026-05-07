@@ -61,10 +61,15 @@ npm run generate:sft:10h
 Restart the AMD host training run with the expanded dataset and a hard timeout:
 
 ```bash
-TRAIN_HOURS=10 \
-MAX_STEPS=100000 \
-CHECKPOINT_STEPS=250 \
-KEEP_CHECKPOINTS=12 \
+TRAIN_HOURS=9 \
+MAX_STEPS=100000000 \
+BATCH_SIZE=4 \
+GRAD_ACCUM=4 \
+MAX_LENGTH=512 \
+DATALOADER_NUM_WORKERS=2 \
+ATTENTION_IMPL=sdpa \
+CHECKPOINT_STEPS=1000 \
+KEEP_CHECKPOINTS=8 \
 MIN_TRAIN_ROWS=250000 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
@@ -79,11 +84,16 @@ The launcher saves every `CHECKPOINT_STEPS` optimizer steps and resumes from the
 Emergency forced wall-clock run if the host keeps executing a short smoke path:
 
 ```bash
-TRAIN_HOURS=10 \
+TRAIN_HOURS=9 \
 MAX_STEPS=100000000 \
 MIN_TRAIN_ROWS=1000000 \
-CHECKPOINT_STEPS=100 \
-KEEP_CHECKPOINTS=24 \
+BATCH_SIZE=4 \
+GRAD_ACCUM=4 \
+MAX_LENGTH=512 \
+DATALOADER_NUM_WORKERS=2 \
+ATTENTION_IMPL=sdpa \
+CHECKPOINT_STEPS=1000 \
+KEEP_CHECKPOINTS=8 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
 OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
@@ -91,61 +101,54 @@ BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
 ./scripts/amd/start-forced-10h-training.sh
 ```
 
-## Example TRL / PEFT recipe
+
+
+For the 9-hour rescue run, the fastest safe optimization is not more synthetic rows; it is eliminating per-step tokenization. The current AMD launchers pre-tokenize a bounded cache, repeat tokenized samples through a map-style dataset, shorten sequences to 512 tokens by default, use larger micro-batches, and checkpoint every 1,000 steps to avoid save overhead. Set `LOAD_IN_4BIT=true` only if the AMD host has a working ROCm-compatible bitsandbytes install; otherwise the default bf16 LoRA path is safer on MI300X.
+
+
+
+## vLLM serving note for ROCm containers
+
+For `vllm/vllm-openai-rocm` images, launch from inside the running container shell and use the modern vLLM CLI shape: `vllm serve <model> ...`. The repo helpers default to that CLI when available and only fall back to `python -m vllm.entrypoints.openai.api_server` for older local installs. If Docker logs show `unrecognized arguments` for `python -m` or `vllm.entrypoints`, enter the container first with `docker exec -it rocm /bin/bash`, then run `./scripts/amd/serve-trained-adapter-vllm-rocm.sh` from the repo root.
+
+
+If the existing one-click container still rejects arguments, use `./scripts/amd/run-vllm-rocm-container.sh` from the host. It starts a fresh `vllm/vllm-openai-rocm:latest` container with `--entrypoint /bin/bash`, mounts the repo, writes an inner command script, and launches `vllm serve` from an argv array so the Docker entrypoint cannot collapse arguments.
+
+## Post-training evaluation handoff
+
+After the adapter reaches the target checkpoint, stop training and run:
+
+```bash
+EARNINGSPILOT_BASE_URL=https://earningspilot-amd.vercel.app \
+AMD_OPENAI_BASE_URL=http://127.0.0.1:8000/v1 \
+AMD_OPENAI_API_KEY=epamd-temp-key \
+AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+LOG_FILE=artifacts/logs/lora-train-forced-10h.log \
+./scripts/amd/post-training-eval.sh
+```
+
+The script writes checkpoint inventory, latest Trainer state, `npm run eval:sample` output, AMD endpoint benchmark output, GPU utilization samples, and a tarball containing the adapter/logs into `artifacts/eval/<timestamp>/`.
+
+## Current PEFT / Trainer recipe
 
 > Treat this as the production recipe for AMD Developer Cloud, not something required for the deterministic public demo.
 
+The active AMD launchers now avoid `trl.SFTTrainer` API drift by using `transformers.Trainer` directly. They apply LoRA with PEFT first, pre-tokenize a bounded cache, and then train against a repeating map-style dataset so throughput is controlled by `MAX_STEPS`, `BATCH_SIZE`, `MAX_LENGTH`, and the wall-clock timeout.
+
+Key defaults for the 9-hour rescue run:
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install torch --index-url https://download.pytorch.org/whl/rocm6.2
-pip install transformers peft trl accelerate datasets bitsandbytes
+BATCH_SIZE=4
+GRAD_ACCUM=4
+MAX_LENGTH=512
+DATALOADER_NUM_WORKERS=2
+ATTENTION_IMPL=sdpa
+CHECKPOINT_STEPS=1000
+LOAD_IN_4BIT=false  # set true only if ROCm bitsandbytes works on the host
 ```
 
-```python
-from datasets import load_dataset
-from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-from trl import SFTTrainer
-
-model_id = "Qwen/Qwen2.5-7B-Instruct"
-dataset = load_dataset("json", data_files="training-data/earningspilot-sft.jsonl", split="train")
-
-tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(model_id, device_map="auto", torch_dtype="auto", trust_remote_code=True)
-
-lora = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    lora_dropout=0.05,
-    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    task_type="CAUSAL_LM"
-)
-
-args = TrainingArguments(
-    output_dir="outputs/earningspilot-qwen-lora",
-    per_device_train_batch_size=1,
-    gradient_accumulation_steps=8,
-    learning_rate=2e-5,
-    num_train_epochs=3,
-    logging_steps=5,
-    save_steps=25,
-    bf16=True,
-    report_to="none"
-)
-
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tokenizer,
-    train_dataset=dataset,
-    peft_config=lora,
-    args=args,
-    max_seq_length=2048
-)
-trainer.train()
-trainer.save_model()
-```
+QLoRA is available through `LOAD_IN_4BIT=true`; when enabled, the scripts install bitsandbytes, pass a `BitsAndBytesConfig`, and call `prepare_model_for_kbit_training` before applying LoRA. On MI300X, the safer default remains bf16 LoRA unless the host confirms ROCm-compatible bitsandbytes support.
 
 ## Evaluation gate before deployment
 
