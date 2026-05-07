@@ -49,18 +49,19 @@ Recommended training approach:
 The repo includes two dataset tiers:
 
 - `training-data/earningspilot-sft.jsonl`: 5 hand-written seed examples used for smoke tests.
-- `training-data/earningspilot-sft-expanded.jsonl`: 5,000 deterministic synthetic finance-agent conversations for the remaining MI300X training window.
+- `training-data/earningspilot-sft-expanded.jsonl`: 5,000 deterministic synthetic finance-agent conversations for smoke or shorter adapter runs.
+- `training-data/earningspilot-sft-10h.jsonl`: 50,000 deterministic synthetic finance-agent conversations (~52 MB) for the urgent 10-hour MI300X training window.
 
 Regenerate or resize the expanded dataset with:
 
 ```bash
-SFT_COUNT=5000 npm run generate:sft
+npm run generate:sft:10h
 ```
 
 Restart the AMD host training run with the expanded dataset and a hard timeout:
 
 ```bash
-TRAIN_HOURS=10 MAX_STEPS=20000 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+TRAIN_HOURS=10 MAX_STEPS=20000 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
 ```
 
 ## Example TRL / PEFT recipe

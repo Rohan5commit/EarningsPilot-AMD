@@ -128,13 +128,13 @@ npm run benchmark:amd
 
 The app surfaces AMD run metadata in the analysis dashboard: GPU name, model ID, endpoint status, latency, and the 40 MI300X-hour budget.
 
-To restart training with the expanded in-repo dataset on the AMD host, use the remaining budget as a hard timeout. The committed expanded dataset contains 5,000 finance-agent SFT conversations at `training-data/earningspilot-sft-expanded.jsonl`, and the generator can recreate or resize it with `SFT_COUNT=5000 npm run generate:sft`.
+To restart training with the expanded in-repo dataset on the AMD host, use the remaining budget as a hard timeout. The urgent 10-hour training dataset is committed at `training-data/earningspilot-sft-10h.jsonl` with 50,000 finance-agent SFT conversations (~52 MB). The smaller `training-data/earningspilot-sft-expanded.jsonl` remains available for 5,000-example smoke runs, and the 10-hour dataset can be regenerated with `npm run generate:sft:10h`.
 
 ```bash
 # Stop idle inference first so the MI300X is used for training, not an unused server.
 cd /root/EarningsPilot-AMD
 git pull
-TRAIN_HOURS=10 MAX_STEPS=20000 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+TRAIN_HOURS=10 MAX_STEPS=20000 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
 ```
 
 This writes adapter artifacts to `artifacts/lora/earningspilot-qwen-7b-lora` and logs to `artifacts/logs/lora-train.log`.
