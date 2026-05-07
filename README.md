@@ -200,6 +200,20 @@ The optimized training defaults are tuned for the remaining 9-hour GPU window: p
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
 
 
+
+To benchmark the trained adapter, start a vLLM OpenAI-compatible server after training:
+
+```bash
+cd /root/EarningsPilot-AMD
+AMD_OPENAI_API_KEY=epamd-temp-key \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+ADAPTER_PATH=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA \
+./scripts/amd/serve-trained-adapter-vllm-rocm.sh
+```
+
+On the DigitalOcean vLLM one-click image, run the command inside the `rocm` container if vLLM is not available on the host.
+
 After stopping training, collect evaluation and submission artifacts with:
 
 ```bash
