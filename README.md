@@ -134,10 +134,15 @@ To restart training with the expanded in-repo dataset on the AMD host, use the r
 # Stop idle inference first so the MI300X is used for training, not an unused server.
 cd /root/EarningsPilot-AMD
 git pull
-TRAIN_HOURS=10 \
-MAX_STEPS=100000 \
-CHECKPOINT_STEPS=250 \
-KEEP_CHECKPOINTS=12 \
+TRAIN_HOURS=9 \
+MAX_STEPS=100000000 \
+BATCH_SIZE=4 \
+GRAD_ACCUM=4 \
+MAX_LENGTH=512 \
+DATALOADER_NUM_WORKERS=2 \
+ATTENTION_IMPL=sdpa \
+CHECKPOINT_STEPS=1000 \
+KEEP_CHECKPOINTS=8 \
 MIN_TRAIN_ROWS=250000 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
@@ -161,17 +166,36 @@ If the host still appears to run an old smoke path, use the emergency forced lau
 ```bash
 cd /root/EarningsPilot-AMD
 git pull
-TRAIN_HOURS=10 \
+TRAIN_HOURS=9 \
 MAX_STEPS=100000000 \
 MIN_TRAIN_ROWS=1000000 \
-CHECKPOINT_STEPS=100 \
-KEEP_CHECKPOINTS=24 \
+BATCH_SIZE=4 \
+GRAD_ACCUM=4 \
+MAX_LENGTH=512 \
+DATALOADER_NUM_WORKERS=2 \
+ATTENTION_IMPL=sdpa \
+CHECKPOINT_STEPS=1000 \
+KEEP_CHECKPOINTS=8 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
 OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
 ./scripts/amd/start-forced-10h-training.sh
 ```
+
+
+
+
+Check MI300X utilization while training is running:
+
+```bash
+cd /root/EarningsPilot-AMD
+SAMPLES=10 INTERVAL=2 ./scripts/amd/gpu-utilization.sh
+```
+
+On the DigitalOcean vLLM one-click image, `rocm-smi` may only be available inside the `rocm` container; the helper automatically falls back to `docker exec rocm rocm-smi` when needed.
+
+The optimized training defaults are tuned for the remaining 9-hour GPU window: pre-tokenized repeated samples to remove dataloader starvation, `MAX_LENGTH=512` to reduce attention cost, `BATCH_SIZE=4` with `GRAD_ACCUM=4` to improve GPU occupancy, SDPA attention when available, and less frequent checkpointing (`CHECKPOINT_STEPS=1000`) so training spends more time computing and less time saving.
 
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
 
