@@ -106,6 +106,11 @@ BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
 For the 9-hour rescue run, the fastest safe optimization is not more synthetic rows; it is eliminating per-step tokenization. The current AMD launchers pre-tokenize a bounded cache, repeat tokenized samples through a map-style dataset, shorten sequences to 512 tokens by default, use larger micro-batches, and checkpoint every 1,000 steps to avoid save overhead. Set `LOAD_IN_4BIT=true` only if the AMD host has a working ROCm-compatible bitsandbytes install; otherwise the default bf16 LoRA path is safer on MI300X.
 
 
+
+## vLLM serving note for ROCm containers
+
+For `vllm/vllm-openai-rocm` images, launch from inside the running container shell and use the modern vLLM CLI shape: `vllm serve <model> ...`. The repo helpers default to that CLI when available and only fall back to `python -m vllm.entrypoints.openai.api_server` for older local installs. If Docker logs show `unrecognized arguments` for `python -m` or `vllm.entrypoints`, enter the container first with `docker exec -it rocm /bin/bash`, then run `./scripts/amd/serve-trained-adapter-vllm-rocm.sh` from the repo root.
+
 ## Post-training evaluation handoff
 
 After the adapter reaches the target checkpoint, stop training and run:
@@ -115,7 +120,13 @@ The active AMD launchers now avoid `trl.SFTTrainer` API drift by using `transfor
 Key defaults for the 9-hour rescue run:
 
 ```bash
-EARNINGSPILOT_BASE_URL=https://earningspilot-amd.vercel.app AMD_OPENAI_BASE_URL=http://127.0.0.1:8000/v1 AMD_OPENAI_API_KEY=epamd-temp-key AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced LOG_FILE=artifacts/logs/lora-train-forced-10h.log ./scripts/amd/post-training-eval.sh
+EARNINGSPILOT_BASE_URL=https://earningspilot-amd.vercel.app \
+AMD_OPENAI_BASE_URL=http://127.0.0.1:8000/v1 \
+AMD_OPENAI_API_KEY=epamd-temp-key \
+AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+LOG_FILE=artifacts/logs/lora-train-forced-10h.log \
+./scripts/amd/post-training-eval.sh
 ```
 
 The script writes checkpoint inventory, latest Trainer state, `npm run eval:sample` output, AMD endpoint benchmark output, GPU utilization samples, and a tarball containing the adapter/logs into `artifacts/eval/<timestamp>/`.

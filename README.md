@@ -212,7 +212,21 @@ SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA \
 ./scripts/amd/serve-trained-adapter-vllm-rocm.sh
 ```
 
-On the DigitalOcean vLLM one-click image, run the command inside the `rocm` container if vLLM is not available on the host.
+On the DigitalOcean vLLM one-click image, run the command inside the existing `rocm` container with `docker exec -it rocm /bin/bash`. Do not pass `python -m vllm...` as arguments to the Docker image entrypoint; the helper now auto-selects the modern `vllm serve <model>` launcher when the `vllm` CLI is available, and only falls back to the Python module for older local installs.
+
+
+If the vLLM container reports an "unrecognized arguments" error mentioning `python -m` or `vllm.entrypoints`, you are probably passing commands to the Docker entrypoint instead of running inside the container shell. Use:
+
+```bash
+docker exec -it rocm /bin/bash
+cd /root/EarningsPilot-AMD
+VLLM_SERVER_CMD=vllm-serve \
+AMD_OPENAI_API_KEY=epamd-temp-key \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+ADAPTER_PATH=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA \
+./scripts/amd/serve-trained-adapter-vllm-rocm.sh
+```
 
 After stopping training, collect evaluation and submission artifacts with:
 
