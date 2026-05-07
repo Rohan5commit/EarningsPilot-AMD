@@ -57,6 +57,24 @@ Track:
 - GPU utilization
 - Cost per analyzed filing packet
 
+## Observed MI300X benchmark run (May 7, 2026)
+
+From a live AMD endpoint (`http://127.0.0.1:8000/v1`) using `Qwen/Qwen2.5-7B-Instruct` on AMD Instinct MI300X:
+
+- `status`: pass
+- `runs`: 3
+- `avgLatencyMs`: 391
+- `avgOutputCharsPerSecond`: 789
+- per-run latency: 408 ms, 385 ms, 380 ms
+
+Related end-to-end app validation from the same run:
+
+- `modelMode`: `amd-openai-compatible`
+- Golden eval: pass
+- Observed extraction: 8 KPIs, 5 risks, 32 evidence items
+
+These metrics are suitable as submission evidence that EarningsPilot AMD was run against a real AMD GPU-backed endpoint, not only deterministic fallback mode.
+
 ## Why AMD matters
 
 AMD GPU capacity enables the product to run open-source finance workflows without sending sensitive company materials to closed hosted systems. The agent architecture can scale horizontally: multiple document chunks and extraction agents can be batched or parallelized across AMD GPU workers.
