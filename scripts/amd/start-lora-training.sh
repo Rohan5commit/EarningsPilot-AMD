@@ -7,7 +7,7 @@ set -euo pipefail
 
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-training-data/earningspilot-sft-10h.jsonl}"
-OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora}"
+OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora-10h}"
 TRAIN_HOURS="${TRAIN_HOURS:-10}"
 MAX_STEPS="${MAX_STEPS:-100000}"
 LORA_R="${LORA_R:-16}"
@@ -19,6 +19,7 @@ CHECKPOINT_STEPS="${CHECKPOINT_STEPS:-250}"
 LOGGING_STEPS="${LOGGING_STEPS:-10}"
 KEEP_CHECKPOINTS="${KEEP_CHECKPOINTS:-8}"
 RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-auto}"
+MIN_TRAIN_ROWS="${MIN_TRAIN_ROWS:-250000}"
 
 if [[ ! -f "$TRAIN_FILE" ]]; then
   echo "[ERROR] Training file not found: $TRAIN_FILE" >&2
@@ -37,6 +38,8 @@ echo "[INFO] MAX_STEPS=$MAX_STEPS"
 echo "[INFO] CHECKPOINT_STEPS=$CHECKPOINT_STEPS"
 echo "[INFO] KEEP_CHECKPOINTS=$KEEP_CHECKPOINTS"
 echo "[INFO] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
+echo "[INFO] MIN_TRAIN_ROWS=$MIN_TRAIN_ROWS"
+echo "[INFO] TRAIN_FILE_ROWS=$(wc -l < "$TRAIN_FILE" | tr -d ' ')"
 
 python3 -m pip install --upgrade pip
 python3 -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33"
@@ -53,7 +56,7 @@ from pathlib import Path
 
 base_model = os.environ.get("BASE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 train_file = os.environ.get("TRAIN_FILE", "training-data/earningspilot-sft-10h.jsonl")
-output_dir = os.environ.get("OUTPUT_DIR", "artifacts/lora/earningspilot-qwen-7b-lora")
+output_dir = os.environ.get("OUTPUT_DIR", "artifacts/lora/earningspilot-qwen-7b-lora-10h")
 max_steps = int(os.environ.get("MAX_STEPS", "100000"))
 learning_rate = float(os.environ.get("LR", "2e-4"))
 batch_size = int(os.environ.get("BATCH_SIZE", "1"))
@@ -64,6 +67,7 @@ checkpoint_steps = int(os.environ.get("CHECKPOINT_STEPS", "250"))
 logging_steps = int(os.environ.get("LOGGING_STEPS", "10"))
 keep_checkpoints = int(os.environ.get("KEEP_CHECKPOINTS", "8"))
 resume_setting = os.environ.get("RESUME_FROM_CHECKPOINT", "auto")
+min_train_rows = int(os.environ.get("MIN_TRAIN_ROWS", "250000"))
 
 os.makedirs(output_dir, exist_ok=True)
 
@@ -93,6 +97,16 @@ else:
     print("[INFO] Starting without checkpoint resume", flush=True)
 
 dataset = load_dataset("json", data_files=train_file, split="train")
+original_rows = len(dataset)
+if original_rows <= 0:
+    raise RuntimeError(f"Training file has no rows: {train_file}")
+if original_rows < min_train_rows:
+    print(f"[INFO] Expanding training dataset from {original_rows} to {min_train_rows} rows by deterministic repetition", flush=True)
+    dataset = dataset.select([i % original_rows for i in range(min_train_rows)])
+else:
+    print(f"[INFO] Training dataset rows: {original_rows}; no repetition needed", flush=True)
+effective_rows = len(dataset)
+print(f"[INFO] Effective training rows: {effective_rows}", flush=True)
 
 def to_text(ex):
     messages = ex.get("messages", [])
@@ -129,6 +143,7 @@ args = TrainingArguments(
     gradient_accumulation_steps=grad_accum,
     learning_rate=learning_rate,
     max_steps=max_steps,
+    num_train_epochs=100000,
     logging_steps=logging_steps,
     save_strategy="steps",
     save_steps=checkpoint_steps,
@@ -159,6 +174,9 @@ with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
         "train_file": train_file,
         "output_dir": output_dir,
         "max_steps": max_steps,
+        "original_dataset_rows": original_rows,
+        "effective_dataset_rows": effective_rows,
+        "min_train_rows": min_train_rows,
         "learning_rate": learning_rate,
         "batch_size": batch_size,
         "gradient_accumulation_steps": grad_accum,
@@ -171,7 +189,7 @@ with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
     }, f, indent=2)
 PY
 
-export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA CHECKPOINT_STEPS LOGGING_STEPS KEEP_CHECKPOINTS RESUME_FROM_CHECKPOINT
+export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA CHECKPOINT_STEPS LOGGING_STEPS KEEP_CHECKPOINTS RESUME_FROM_CHECKPOINT MIN_TRAIN_ROWS
 
 # Use SIGINT first so Transformers has a chance to unwind cleanly; periodic checkpoints are the durable resume boundary.
 set +e
@@ -185,6 +203,7 @@ cat > "$OUTPUT_DIR/training-run-status.json" <<EOF_STATUS
   "train_hours": "$TRAIN_HOURS",
   "max_steps": "$MAX_STEPS",
   "checkpoint_steps": "$CHECKPOINT_STEPS",
+  "min_train_rows": "$MIN_TRAIN_ROWS",
   "resume_from_checkpoint": "$RESUME_FROM_CHECKPOINT",
   "status_note": "0 means max_steps/completion; 124 means timeout reached; 130 means interrupted after a saved checkpoint can be resumed."
 }

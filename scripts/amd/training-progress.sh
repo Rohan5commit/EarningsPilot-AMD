@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora}"
+OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora-10h}"
 LOG_FILE="${LOG_FILE:-artifacts/logs/lora-train.log}"
 
 latest_checkpoint=""

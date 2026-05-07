@@ -138,19 +138,20 @@ TRAIN_HOURS=10 \
 MAX_STEPS=100000 \
 CHECKPOINT_STEPS=250 \
 KEEP_CHECKPOINTS=12 \
+MIN_TRAIN_ROWS=250000 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
 ./scripts/amd/start-lora-training.sh
 ```
 
-This writes adapter artifacts to `artifacts/lora/earningspilot-qwen-7b-lora`, periodic checkpoints to `artifacts/lora/earningspilot-qwen-7b-lora/checkpoint-*`, run status to `artifacts/lora/earningspilot-qwen-7b-lora/training-run-status.json`, and append-only logs to `artifacts/logs/lora-train.log`. Re-running the same command resumes from the latest checkpoint by default because `RESUME_FROM_CHECKPOINT=auto`.
+This writes adapter artifacts to `artifacts/lora/earningspilot-qwen-7b-lora-10h`, periodic checkpoints to `artifacts/lora/earningspilot-qwen-7b-lora-10h/checkpoint-*`, run status to `artifacts/lora/earningspilot-qwen-7b-lora-10h/training-run-status.json`, and append-only logs to `artifacts/logs/lora-train.log`. Re-running the same command resumes from the latest checkpoint by default because `RESUME_FROM_CHECKPOINT=auto`.
 
 Check progress while training is running:
 
 ```bash
 cd /root/EarningsPilot-AMD
-OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora ./scripts/amd/training-progress.sh
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h ./scripts/amd/training-progress.sh
 ```
 
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
