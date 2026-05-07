@@ -228,6 +228,16 @@ SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA \
 ./scripts/amd/serve-trained-adapter-vllm-rocm.sh
 ```
 
+
+If the existing one-click `rocm` container keeps rejecting manual commands through its entrypoint, bypass that entrypoint completely by starting a fresh vLLM ROCm container from the repo root:
+
+```bash
+cd /root/EarningsPilot-AMD
+AMD_OPENAI_API_KEY=epamd-temp-key BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ADAPTER_PATH=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA ./scripts/amd/run-vllm-rocm-container.sh
+```
+
+This helper uses `docker run --entrypoint /bin/bash ...` and an inner shell script so Docker cannot collapse the vLLM command into a single malformed positional argument.
+
 After stopping training, collect evaluation and submission artifacts with:
 
 ```bash

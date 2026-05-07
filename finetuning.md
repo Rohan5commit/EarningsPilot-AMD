@@ -111,6 +111,9 @@ For the 9-hour rescue run, the fastest safe optimization is not more synthetic r
 
 For `vllm/vllm-openai-rocm` images, launch from inside the running container shell and use the modern vLLM CLI shape: `vllm serve <model> ...`. The repo helpers default to that CLI when available and only fall back to `python -m vllm.entrypoints.openai.api_server` for older local installs. If Docker logs show `unrecognized arguments` for `python -m` or `vllm.entrypoints`, enter the container first with `docker exec -it rocm /bin/bash`, then run `./scripts/amd/serve-trained-adapter-vllm-rocm.sh` from the repo root.
 
+
+If the existing one-click container still rejects arguments, use `./scripts/amd/run-vllm-rocm-container.sh` from the host. It starts a fresh `vllm/vllm-openai-rocm:latest` container with `--entrypoint /bin/bash`, mounts the repo, writes an inner command script, and launches `vllm serve` from an argv array so the Docker entrypoint cannot collapse arguments.
+
 ## Post-training evaluation handoff
 
 After the adapter reaches the target checkpoint, stop training and run:
