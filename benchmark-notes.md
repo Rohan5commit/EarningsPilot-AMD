@@ -21,11 +21,11 @@ The project now assumes a 40 AMD Instinct MI300X GPU-hour ceiling. Spend it on v
 
 - 4 hours: ROCm/vLLM bring-up and Qwen endpoint smoke test.
 - 4 hours: app integration and `amd-openai-compatible` mode validation.
-- 16 hours: two LoRA/QLoRA adapter attempts for EarningsPilot-Qwen-7B-LoRA.
-- 4 hours: serve the best base/adapted model endpoint.
-- 4 hours: benchmark endpoint latency and output throughput with `npm run benchmark:amd`.
+- 15 hours: time-boxed LoRA/QLoRA adapter training for EarningsPilot-Qwen-7B-LoRA.
+- 5 hours: serve the best base/adapted model endpoint and stability checks.
+- 5 hours: benchmark endpoint latency and output throughput with `npm run benchmark:amd`.
 - 4 hours: run golden eval and capture screenshots/video proof.
-- 4 hours: contingency and final demo capture.
+- 4 hours: contingency and final demo capture plus relaunch buffer.
 
 Use `amd-40-gpu-hour-runbook.md` as the operating checklist.
 
