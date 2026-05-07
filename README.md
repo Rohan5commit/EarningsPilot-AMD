@@ -134,10 +134,15 @@ To restart training with the expanded in-repo dataset on the AMD host, use the r
 # Stop idle inference first so the MI300X is used for training, not an unused server.
 cd /root/EarningsPilot-AMD
 git pull
-TRAIN_HOURS=10 \
-MAX_STEPS=100000 \
-CHECKPOINT_STEPS=250 \
-KEEP_CHECKPOINTS=12 \
+TRAIN_HOURS=9 \
+MAX_STEPS=100000000 \
+BATCH_SIZE=4 \
+GRAD_ACCUM=4 \
+MAX_LENGTH=512 \
+DATALOADER_NUM_WORKERS=2 \
+ATTENTION_IMPL=sdpa \
+CHECKPOINT_STEPS=1000 \
+KEEP_CHECKPOINTS=8 \
 MIN_TRAIN_ROWS=250000 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
@@ -161,11 +166,16 @@ If the host still appears to run an old smoke path, use the emergency forced lau
 ```bash
 cd /root/EarningsPilot-AMD
 git pull
-TRAIN_HOURS=10 \
+TRAIN_HOURS=9 \
 MAX_STEPS=100000000 \
 MIN_TRAIN_ROWS=1000000 \
-CHECKPOINT_STEPS=100 \
-KEEP_CHECKPOINTS=24 \
+BATCH_SIZE=4 \
+GRAD_ACCUM=4 \
+MAX_LENGTH=512 \
+DATALOADER_NUM_WORKERS=2 \
+ATTENTION_IMPL=sdpa \
+CHECKPOINT_STEPS=1000 \
+KEEP_CHECKPOINTS=8 \
 RESUME_FROM_CHECKPOINT=auto \
 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
 OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
@@ -173,7 +183,65 @@ BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
 ./scripts/amd/start-forced-10h-training.sh
 ```
 
+
+
+
+Check MI300X utilization while training is running:
+
+```bash
+cd /root/EarningsPilot-AMD
+SAMPLES=10 INTERVAL=2 ./scripts/amd/gpu-utilization.sh
+```
+
+On the DigitalOcean vLLM one-click image, `rocm-smi` may only be available inside the `rocm` container; the helper automatically falls back to `docker exec rocm rocm-smi` when needed.
+
+The optimized training defaults are tuned for the remaining 9-hour GPU window: pre-tokenized repeated samples to remove dataloader starvation, `MAX_LENGTH=512` to reduce attention cost, `BATCH_SIZE=4` with `GRAD_ACCUM=4` to improve GPU occupancy, SDPA attention when available, and less frequent checkpointing (`CHECKPOINT_STEPS=1000`) so training spends more time computing and less time saving.
+
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
+
+
+
+To benchmark the trained adapter, start a vLLM OpenAI-compatible server after training:
+
+```bash
+cd /root/EarningsPilot-AMD
+AMD_OPENAI_API_KEY=epamd-temp-key \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+ADAPTER_PATH=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA \
+./scripts/amd/serve-trained-adapter-vllm-rocm.sh
+```
+
+On the DigitalOcean vLLM one-click image, run the command inside the existing `rocm` container with `docker exec -it rocm /bin/bash`. Do not pass `python -m vllm...` as arguments to the Docker image entrypoint; the helper now auto-selects the modern `vllm serve <model>` launcher when the `vllm` CLI is available, and only falls back to the Python module for older local installs.
+
+
+If the vLLM container reports an "unrecognized arguments" error mentioning `python -m` or `vllm.entrypoints`, you are probably passing commands to the Docker entrypoint instead of running inside the container shell. Use:
+
+```bash
+docker exec -it rocm /bin/bash
+cd /root/EarningsPilot-AMD
+VLLM_SERVER_CMD=vllm-serve \
+AMD_OPENAI_API_KEY=epamd-temp-key \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+ADAPTER_PATH=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+SERVED_MODEL_NAME=EarningsPilot-Qwen-7B-LoRA \
+./scripts/amd/serve-trained-adapter-vllm-rocm.sh
+```
+
+After stopping training, collect evaluation and submission artifacts with:
+
+```bash
+cd /root/EarningsPilot-AMD
+EARNINGSPILOT_BASE_URL=https://earningspilot-amd.vercel.app \
+AMD_OPENAI_BASE_URL=http://127.0.0.1:8000/v1 \
+AMD_OPENAI_API_KEY=epamd-temp-key \
+AMD_MODEL_ID=Qwen/Qwen2.5-7B-Instruct \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+LOG_FILE=artifacts/logs/lora-train-forced-10h.log \
+./scripts/amd/post-training-eval.sh
+```
+
+This writes a timestamped `artifacts/eval/...` folder with checkpoint counts, trainer state, app eval output, AMD benchmark output, GPU utilization samples, and an adapter/log archive.
 
 ## GPU and custom-model plan
 
