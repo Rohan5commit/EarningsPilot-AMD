@@ -19,11 +19,10 @@ Use SSH into an already-provisioned AMD GPU host. A DigitalOcean token is only u
 | ROCm/vLLM bring-up | 4 | Running OpenAI-compatible Qwen endpoint |
 | App integration + eval | 4 | `amd-openai-compatible` mode verified in EarningsPilot |
 | SFT dataset expansion checks | 2 | Valid JSONL examples and prompt coverage |
-| LoRA/QLoRA adapter training run 1 | 8 | EarningsPilot-Qwen-7B-LoRA first adapter |
-| LoRA/QLoRA adapter training run 2 | 8 | Improved adapter or hyperparameter retry |
-| Serving base + adapter | 4 | Endpoint serving the tuned adapter or best base model |
-| Benchmark and golden evaluation | 4 | Latency, output throughput, quality gate results |
-| Demo capture buffer | 4 | Screenshots/video proof, fallback testing |
+| LoRA/QLoRA adapter training (time-boxed) | 15 | EarningsPilot-Qwen-7B-LoRA best adapter within strict budget |
+| Serving base + adapter | 5 | Endpoint serving the tuned adapter or best base model |
+| Benchmark and golden evaluation | 5 | Latency, output throughput, quality gate results |
+| Demo capture buffer | 3 | Screenshots/video proof, fallback testing |
 | Final contingency | 2 | Deadline/debug buffer |
 | **Total** | **40** | Winning AMD proof package |
 
