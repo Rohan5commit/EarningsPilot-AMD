@@ -13,6 +13,69 @@ RUN_GPU_UTIL="${RUN_GPU_UTIL:-true}"
 RUN_APP_EVAL="${RUN_APP_EVAL:-true}"
 RUN_AMD_BENCHMARK="${RUN_AMD_BENCHMARK:-true}"
 BENCHMARK_RUNS="${BENCHMARK_RUNS:-3}"
+AUTO_RESOLVE_PATHS="${AUTO_RESOLVE_PATHS:-true}"
+
+requested_output_dir="$OUTPUT_DIR"
+requested_log_file="$LOG_FILE"
+
+resolve_output_dir() {
+  if [[ -d "$OUTPUT_DIR" || "$AUTO_RESOLVE_PATHS" != "true" ]]; then
+    return
+  fi
+
+  local candidates=()
+  if [[ "$OUTPUT_DIR" != *-forced ]]; then
+    candidates+=("${OUTPUT_DIR}-forced")
+  fi
+  candidates+=(
+    "artifacts/lora/earningspilot-qwen-7b-lora-10h-forced"
+    "artifacts/lora/earningspilot-qwen-7b-lora-10h"
+  )
+
+  if [[ -d artifacts/lora ]]; then
+    while IFS= read -r adapter_config; do
+      candidates+=("$(dirname "$adapter_config")")
+    done < <(find artifacts/lora -type f -name adapter_config.json | sort -V -r)
+  fi
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -d "$candidate" ]]; then
+      echo "[WARN] OUTPUT_DIR not found: $requested_output_dir" >&2
+      echo "[WARN] Auto-resolved OUTPUT_DIR to: $candidate" >&2
+      OUTPUT_DIR="$candidate"
+      return
+    fi
+  done
+}
+
+resolve_log_file() {
+  if [[ -f "$LOG_FILE" || "$AUTO_RESOLVE_PATHS" != "true" ]]; then
+    return
+  fi
+
+  local candidates=()
+  if [[ "$OUTPUT_DIR" == *-forced* ]]; then
+    candidates+=("artifacts/logs/lora-train-forced-10h.log")
+  fi
+  candidates+=(
+    "artifacts/logs/lora-train.log"
+    "artifacts/logs/lora-train-forced-10h.log"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      echo "[WARN] LOG_FILE not found: $requested_log_file" >&2
+      echo "[WARN] Auto-resolved LOG_FILE to: $candidate" >&2
+      LOG_FILE="$candidate"
+      return
+    fi
+  done
+}
+
+resolve_output_dir
+resolve_log_file
 
 mkdir -p "$EVAL_DIR"
 
@@ -20,9 +83,12 @@ echo "[INFO] EarningsPilot post-training eval"
 echo "[INFO] OUTPUT_DIR=$OUTPUT_DIR"
 echo "[INFO] LOG_FILE=$LOG_FILE"
 echo "[INFO] EVAL_DIR=$EVAL_DIR"
+echo "[INFO] AUTO_RESOLVE_PATHS=$AUTO_RESOLVE_PATHS"
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   echo "[ERROR] Adapter output directory not found: $OUTPUT_DIR" >&2
+  echo "[ERROR] Set OUTPUT_DIR to the directory that contains adapter_config.json or checkpoint-* directories." >&2
+  echo "[ERROR] To disable path fallback attempts, set AUTO_RESOLVE_PATHS=false." >&2
   exit 1
 fi
 

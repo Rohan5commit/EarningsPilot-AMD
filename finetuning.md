@@ -131,7 +131,7 @@ LOG_FILE=artifacts/logs/lora-train-forced-10h.log \
 ./scripts/amd/post-training-eval.sh
 ```
 
-The script writes checkpoint inventory, latest Trainer state, `npm run eval:sample` output, AMD endpoint benchmark output, GPU utilization samples, and a tarball containing the adapter/logs into `artifacts/eval/<timestamp>/`.
+The script writes checkpoint inventory, latest Trainer state, `npm run eval:sample` output, AMD endpoint benchmark output, GPU utilization samples, and a tarball containing the adapter/logs into `artifacts/eval/<timestamp>/`. It also auto-resolves common output/log path mixups by default, including `artifacts/lora/earningspilot-qwen-7b-lora-10h` to `artifacts/lora/earningspilot-qwen-7b-lora-10h-forced` after the forced launcher; set `AUTO_RESOLVE_PATHS=false` for strict path validation.
 
 ## Current PEFT / Trainer recipe
 

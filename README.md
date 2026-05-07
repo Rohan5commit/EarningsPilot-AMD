@@ -263,7 +263,7 @@ LOG_FILE=artifacts/logs/lora-train-forced-10h.log \
 ./scripts/amd/post-training-eval.sh
 ```
 
-This writes a timestamped `artifacts/eval/...` folder with checkpoint counts, trainer state, app eval output, AMD benchmark output, GPU utilization samples, and an adapter/log archive.
+This writes a timestamped `artifacts/eval/...` folder with checkpoint counts, trainer state, app eval output, AMD benchmark output, GPU utilization samples, and an adapter/log archive. If you accidentally pass the non-forced path (`artifacts/lora/earningspilot-qwen-7b-lora-10h`) after running the forced launcher, the collector now auto-resolves to `artifacts/lora/earningspilot-qwen-7b-lora-10h-forced` by default; set `AUTO_RESOLVE_PATHS=false` to make missing paths fatal.
 
 ## GPU and custom-model plan
 
