@@ -3,13 +3,13 @@ set -euo pipefail
 
 # EarningsPilot AMD - time-boxed LoRA/QLoRA runner for AMD MI300X hosts
 # Usage:
-#   TRAIN_HOURS=10 MAX_STEPS=20000 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+#   TRAIN_HOURS=10 MAX_STEPS=100000 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
 
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen2.5-7B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-training-data/earningspilot-sft-10h.jsonl}"
 OUTPUT_DIR="${OUTPUT_DIR:-artifacts/lora/earningspilot-qwen-7b-lora}"
 TRAIN_HOURS="${TRAIN_HOURS:-10}"
-MAX_STEPS="${MAX_STEPS:-20000}"
+MAX_STEPS="${MAX_STEPS:-100000}"
 LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
@@ -54,7 +54,7 @@ from pathlib import Path
 base_model = os.environ.get("BASE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 train_file = os.environ.get("TRAIN_FILE", "training-data/earningspilot-sft-10h.jsonl")
 output_dir = os.environ.get("OUTPUT_DIR", "artifacts/lora/earningspilot-qwen-7b-lora")
-max_steps = int(os.environ.get("MAX_STEPS", "20000"))
+max_steps = int(os.environ.get("MAX_STEPS", "100000"))
 learning_rate = float(os.environ.get("LR", "2e-4"))
 batch_size = int(os.environ.get("BATCH_SIZE", "1"))
 grad_accum = int(os.environ.get("GRAD_ACCUM", "8"))

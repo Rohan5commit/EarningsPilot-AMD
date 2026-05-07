@@ -135,7 +135,7 @@ To restart training with the expanded in-repo dataset on the AMD host, use the r
 cd /root/EarningsPilot-AMD
 git pull
 TRAIN_HOURS=10 \
-MAX_STEPS=20000 \
+MAX_STEPS=100000 \
 CHECKPOINT_STEPS=250 \
 KEEP_CHECKPOINTS=12 \
 RESUME_FROM_CHECKPOINT=auto \

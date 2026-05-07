@@ -62,7 +62,7 @@ Restart the AMD host training run with the expanded dataset and a hard timeout:
 
 ```bash
 TRAIN_HOURS=10 \
-MAX_STEPS=20000 \
+MAX_STEPS=100000 \
 CHECKPOINT_STEPS=250 \
 KEEP_CHECKPOINTS=12 \
 RESUME_FROM_CHECKPOINT=auto \
