@@ -128,13 +128,50 @@ npm run benchmark:amd
 
 The app surfaces AMD run metadata in the analysis dashboard: GPU name, model ID, endpoint status, latency, and the 40 MI300X-hour budget.
 
-To start the 15-hour training window on the AMD host:
+To restart training with the expanded in-repo dataset on the AMD host, use the remaining budget as a hard timeout. The urgent 10-hour training dataset is committed at `training-data/earningspilot-sft-10h.jsonl` with 50,000 finance-agent SFT conversations (~52 MB). The smaller `training-data/earningspilot-sft-expanded.jsonl` remains available for 5,000-example smoke runs, and the 10-hour dataset can be regenerated with `npm run generate:sft:10h`.
 
 ```bash
-TRAIN_HOURS=15 BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+# Stop idle inference first so the MI300X is used for training, not an unused server.
+cd /root/EarningsPilot-AMD
+git pull
+TRAIN_HOURS=10 \
+MAX_STEPS=100000 \
+CHECKPOINT_STEPS=250 \
+KEEP_CHECKPOINTS=12 \
+MIN_TRAIN_ROWS=250000 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-lora-training.sh
 ```
 
-This writes adapter artifacts to `artifacts/lora/earningspilot-qwen-7b-lora` and logs to `artifacts/logs/lora-train.log`.
+This writes adapter artifacts to `artifacts/lora/earningspilot-qwen-7b-lora-10h`, periodic checkpoints to `artifacts/lora/earningspilot-qwen-7b-lora-10h/checkpoint-*`, run status to `artifacts/lora/earningspilot-qwen-7b-lora-10h/training-run-status.json`, and append-only logs to `artifacts/logs/lora-train.log`. Re-running the same command resumes from the latest checkpoint by default because `RESUME_FROM_CHECKPOINT=auto`.
+
+Check progress while training is running:
+
+```bash
+cd /root/EarningsPilot-AMD
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h ./scripts/amd/training-progress.sh
+```
+
+
+
+If the host still appears to run an old smoke path, use the emergency forced launcher instead. It materializes a large JSONL file on disk before Trainer starts, refuses datasets under 100,000 rows, and writes separate logs so a 5-row smoke run cannot masquerade as the real run:
+
+```bash
+cd /root/EarningsPilot-AMD
+git pull
+TRAIN_HOURS=10 \
+MAX_STEPS=100000000 \
+MIN_TRAIN_ROWS=1000000 \
+CHECKPOINT_STEPS=100 \
+KEEP_CHECKPOINTS=24 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-forced-10h-training.sh
+```
 
 The latest recorded AMD-hosted benchmark (May 7, 2026) reported `avgLatencyMs=391` over 3 runs with `avgOutputCharsPerSecond=789` on `Qwen/Qwen2.5-7B-Instruct` using AMD Instinct MI300X. The corresponding sample eval passed in `amd-openai-compatible` mode with 8 KPIs, 5 risks, and 32 evidence items.
 

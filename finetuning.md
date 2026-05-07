@@ -43,6 +43,54 @@ Recommended training approach:
 - **Objective:** Improve JSON adherence, evidence grounding, KPI normalization, and risk-title consistency.
 - **Base model first choice:** Qwen2.5 7B Instruct because it is strong at structured extraction and multilingual/document tasks.
 
+
+## Expanded SFT dataset for the remaining GPU window
+
+The repo includes two dataset tiers:
+
+- `training-data/earningspilot-sft.jsonl`: 5 hand-written seed examples used for smoke tests.
+- `training-data/earningspilot-sft-expanded.jsonl`: 5,000 deterministic synthetic finance-agent conversations for smoke or shorter adapter runs.
+- `training-data/earningspilot-sft-10h.jsonl`: 50,000 deterministic synthetic finance-agent conversations (~52 MB) for the urgent 10-hour MI300X training window.
+
+Regenerate or resize the expanded dataset with:
+
+```bash
+npm run generate:sft:10h
+```
+
+Restart the AMD host training run with the expanded dataset and a hard timeout:
+
+```bash
+TRAIN_HOURS=10 \
+MAX_STEPS=100000 \
+CHECKPOINT_STEPS=250 \
+KEEP_CHECKPOINTS=12 \
+MIN_TRAIN_ROWS=250000 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-lora-training.sh
+```
+
+The launcher saves every `CHECKPOINT_STEPS` optimizer steps and resumes from the newest `checkpoint-*` directory when `RESUME_FROM_CHECKPOINT=auto`. Use `./scripts/amd/training-progress.sh` to print the latest checkpoint step, percent progress against `MAX_STEPS`, the last Trainer log entry, and the last 30 log lines.
+
+
+
+Emergency forced wall-clock run if the host keeps executing a short smoke path:
+
+```bash
+TRAIN_HOURS=10 \
+MAX_STEPS=100000000 \
+MIN_TRAIN_ROWS=1000000 \
+CHECKPOINT_STEPS=100 \
+KEEP_CHECKPOINTS=24 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+OUTPUT_DIR=artifacts/lora/earningspilot-qwen-7b-lora-10h-forced \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-forced-10h-training.sh
+```
+
 ## Example TRL / PEFT recipe
 
 > Treat this as the production recipe for AMD Developer Cloud, not something required for the deterministic public demo.
