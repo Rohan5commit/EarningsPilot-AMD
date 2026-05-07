@@ -15,6 +15,10 @@ LORA_ALPHA="${LORA_ALPHA:-32}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 GRAD_ACCUM="${GRAD_ACCUM:-8}"
 LR="${LR:-2e-4}"
+CHECKPOINT_STEPS="${CHECKPOINT_STEPS:-250}"
+LOGGING_STEPS="${LOGGING_STEPS:-10}"
+KEEP_CHECKPOINTS="${KEEP_CHECKPOINTS:-8}"
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-auto}"
 
 if [[ ! -f "$TRAIN_FILE" ]]; then
   echo "[ERROR] Training file not found: $TRAIN_FILE" >&2
@@ -30,6 +34,9 @@ echo "[INFO] TRAIN_FILE=$TRAIN_FILE"
 echo "[INFO] OUTPUT_DIR=$OUTPUT_DIR"
 echo "[INFO] TRAIN_HOURS=$TRAIN_HOURS"
 echo "[INFO] MAX_STEPS=$MAX_STEPS"
+echo "[INFO] CHECKPOINT_STEPS=$CHECKPOINT_STEPS"
+echo "[INFO] KEEP_CHECKPOINTS=$KEEP_CHECKPOINTS"
+echo "[INFO] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
 
 python3 -m pip install --upgrade pip
 python3 -m pip install "transformers>=4.45" "datasets>=2.20" "peft>=0.12" "trl>=0.10" "accelerate>=0.33"
@@ -42,6 +49,7 @@ import torch
 from peft import LoraConfig
 from trl import SFTTrainer
 import os
+from pathlib import Path
 
 base_model = os.environ.get("BASE_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 train_file = os.environ.get("TRAIN_FILE", "training-data/earningspilot-sft-10h.jsonl")
@@ -52,8 +60,37 @@ batch_size = int(os.environ.get("BATCH_SIZE", "1"))
 grad_accum = int(os.environ.get("GRAD_ACCUM", "8"))
 lora_r = int(os.environ.get("LORA_R", "16"))
 lora_alpha = int(os.environ.get("LORA_ALPHA", "32"))
+checkpoint_steps = int(os.environ.get("CHECKPOINT_STEPS", "250"))
+logging_steps = int(os.environ.get("LOGGING_STEPS", "10"))
+keep_checkpoints = int(os.environ.get("KEEP_CHECKPOINTS", "8"))
+resume_setting = os.environ.get("RESUME_FROM_CHECKPOINT", "auto")
 
 os.makedirs(output_dir, exist_ok=True)
+
+def latest_checkpoint(path: str):
+    root = Path(path)
+    checkpoints = []
+    for child in root.glob("checkpoint-*"):
+        if child.is_dir():
+            try:
+                step = int(child.name.split("-")[-1])
+            except ValueError:
+                continue
+            checkpoints.append((step, child))
+    if not checkpoints:
+        return None
+    return str(sorted(checkpoints)[-1][1])
+
+resume_checkpoint = None
+if resume_setting.lower() == "auto":
+    resume_checkpoint = latest_checkpoint(output_dir)
+elif resume_setting.lower() not in {"", "false", "none", "0"}:
+    resume_checkpoint = resume_setting
+
+if resume_checkpoint:
+    print(f"[INFO] Resuming from checkpoint: {resume_checkpoint}", flush=True)
+else:
+    print("[INFO] Starting without checkpoint resume", flush=True)
 
 dataset = load_dataset("json", data_files=train_file, split="train")
 
@@ -92,9 +129,10 @@ args = TrainingArguments(
     gradient_accumulation_steps=grad_accum,
     learning_rate=learning_rate,
     max_steps=max_steps,
-    logging_steps=20,
-    save_steps=100,
-    save_total_limit=2,
+    logging_steps=logging_steps,
+    save_strategy="steps",
+    save_steps=checkpoint_steps,
+    save_total_limit=keep_checkpoints,
     fp16=False,
     bf16=True,
     dataloader_pin_memory=False,
@@ -111,7 +149,7 @@ trainer = SFTTrainer(
     args=args,
 )
 
-trainer.train()
+trainer.train(resume_from_checkpoint=resume_checkpoint)
 trainer.model.save_pretrained(output_dir)
 tokenizer.save_pretrained(output_dir)
 
@@ -126,13 +164,35 @@ with open(os.path.join(output_dir, "training-summary.json"), "w") as f:
         "gradient_accumulation_steps": grad_accum,
         "lora_r": lora_r,
         "lora_alpha": lora_alpha,
+        "checkpoint_steps": checkpoint_steps,
+        "logging_steps": logging_steps,
+        "keep_checkpoints": keep_checkpoints,
+        "resume_from_checkpoint": resume_checkpoint,
     }, f, indent=2)
 PY
 
-export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA
+export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA CHECKPOINT_STEPS LOGGING_STEPS KEEP_CHECKPOINTS RESUME_FROM_CHECKPOINT
 
-timeout "${TRAIN_HOURS}h" python3 "$OUTPUT_DIR/run_lora_sft.py" 2>&1 | tee "artifacts/logs/lora-train.log"
+# Use SIGINT first so Transformers has a chance to unwind cleanly; periodic checkpoints are the durable resume boundary.
+set +e
+timeout --signal=INT --kill-after=120s "${TRAIN_HOURS}h" python3 "$OUTPUT_DIR/run_lora_sft.py" 2>&1 | tee -a "artifacts/logs/lora-train.log"
+status=${PIPESTATUS[0]}
+set -e
 
-echo "[INFO] Training time-box completed (or process exited)."
+cat > "$OUTPUT_DIR/training-run-status.json" <<EOF_STATUS
+{
+  "exit_code": $status,
+  "train_hours": "$TRAIN_HOURS",
+  "max_steps": "$MAX_STEPS",
+  "checkpoint_steps": "$CHECKPOINT_STEPS",
+  "resume_from_checkpoint": "$RESUME_FROM_CHECKPOINT",
+  "status_note": "0 means max_steps/completion; 124 means timeout reached; 130 means interrupted after a saved checkpoint can be resumed."
+}
+EOF_STATUS
+
+echo "[INFO] Training process exited with code $status."
 echo "[INFO] Adapter artifacts: $OUTPUT_DIR"
+echo "[INFO] Checkpoints: $OUTPUT_DIR/checkpoint-*"
 echo "[INFO] Log file: artifacts/logs/lora-train.log"
+echo "[INFO] Run status: $OUTPUT_DIR/training-run-status.json"
+exit "$status"

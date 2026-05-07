@@ -61,8 +61,17 @@ npm run generate:sft:10h
 Restart the AMD host training run with the expanded dataset and a hard timeout:
 
 ```bash
-TRAIN_HOURS=10 MAX_STEPS=20000 TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl BASE_MODEL=Qwen/Qwen2.5-7B-Instruct ./scripts/amd/start-lora-training.sh
+TRAIN_HOURS=10 \
+MAX_STEPS=20000 \
+CHECKPOINT_STEPS=250 \
+KEEP_CHECKPOINTS=12 \
+RESUME_FROM_CHECKPOINT=auto \
+TRAIN_FILE=training-data/earningspilot-sft-10h.jsonl \
+BASE_MODEL=Qwen/Qwen2.5-7B-Instruct \
+./scripts/amd/start-lora-training.sh
 ```
+
+The launcher saves every `CHECKPOINT_STEPS` optimizer steps and resumes from the newest `checkpoint-*` directory when `RESUME_FROM_CHECKPOINT=auto`. Use `./scripts/amd/training-progress.sh` to print the latest checkpoint step, percent progress against `MAX_STEPS`, the last Trainer log entry, and the last 30 log lines.
 
 ## Example TRL / PEFT recipe
 
