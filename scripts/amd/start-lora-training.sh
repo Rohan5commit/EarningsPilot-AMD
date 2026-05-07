@@ -157,6 +157,14 @@ PY
 
 export BASE_MODEL TRAIN_FILE OUTPUT_DIR MAX_STEPS LR BATCH_SIZE GRAD_ACCUM LORA_R LORA_ALPHA
 
-timeout "${TRAIN_HOURS}h" "$PYTHON_BIN" "$OUTPUT_DIR/run_lora_sft.py" 2>&1 | tee "artifacts/logs/lora-train.log"
+if timeout "${TRAIN_HOURS}h" "$PYTHON_BIN" "$OUTPUT_DIR/run_lora_sft.py" 2>&1 | tee "artifacts/logs/lora-train.log"; then
+  train_status=0
+else
+  train_status=$?
+fi
+
+if [ "$train_status" -ne 0 ] && [ "$train_status" -ne 124 ]; then
+  exit "$train_status"
+fi
 
 echo "[INFO] Training time-box completed (or process exited)."
