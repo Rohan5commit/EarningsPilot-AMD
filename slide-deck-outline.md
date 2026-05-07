@@ -28,7 +28,7 @@ Each agent has a narrow role and emits structured output.
 
 ## Slide 5 — AMD Developer Cloud Architecture
 
-Next.js app + typed orchestration + optional OpenAI-compatible endpoint backed by AMD Developer Cloud GPUs, ROCm, and open-source models such as Qwen, Llama, DeepSeek, or Mistral. Include the model-improvement loop: seed SFT data → LoRA on AMD → golden eval → endpoint deployment.
+Next.js app + typed orchestration + optional OpenAI-compatible endpoint backed by AMD Developer Cloud GPUs, ROCm, and open-source models such as Qwen, Llama, DeepSeek, or Mistral. Include the custom-model path: EarningsPilot-Qwen-7B-LoRA → 1x MI300X for 7B inference/adapter tuning → golden eval → endpoint deployment.
 
 ## Slide 6 — Live Demo Screens
 

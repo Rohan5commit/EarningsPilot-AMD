@@ -45,6 +45,13 @@ EarningsPilot AMD turns raw earnings and filings material into a decision-ready 
 - In AMD model mode, calls an OpenAI-compatible endpoint for compact JSON summaries.
 
 
+
+## Custom model interpretation
+
+EarningsPilot AMD treats "our model" as a domain-adapted open-source model, not a from-scratch foundation model. The intended owned artifact is **EarningsPilot-Qwen-7B-LoRA**: an EarningsPilot adapter trained on finance-agent tasks and served with its base model on AMD Developer Cloud.
+
+The GPU requirement for the hackathon version is intentionally modest: one AMD Instinct MI300X is enough for 7B-class inference and adapter tuning, while an 8-GPU MI300X node is reserved for larger-model inference, throughput benchmarking, or full fine-tuning research.
+
 ## Model improvement loop
 
 EarningsPilot AMD separates demo reliability from model training. The public app can run deterministically, while the production path can improve model behavior through an AMD-hosted fine-tuning loop:

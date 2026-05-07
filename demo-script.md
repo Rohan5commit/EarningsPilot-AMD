@@ -26,7 +26,7 @@ Click a KPI evidence chip and a risk card.
 
 **0:48-1:00 — Business and AMD story**
 
-"In production, the Report Agent can call an OpenAI-compatible endpoint serving Qwen, Llama, DeepSeek, or Mistral on AMD Developer Cloud GPUs. We also include a LoRA fine-tuning dataset and eval harness, so analyst corrections can become a tuned AMD-hosted adapter without making the public demo fragile."
+"In production, our custom model path is EarningsPilot-Qwen-7B-LoRA: a Qwen-class open-source base model plus an EarningsPilot finance adapter trained and served on AMD Developer Cloud. One MI300X is enough for the 7B inference and LoRA path; larger MI300X nodes are reserved for bigger models or throughput benchmarks."
 
 ## 3-minute video outline
 

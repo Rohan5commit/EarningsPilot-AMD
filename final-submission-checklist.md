@@ -15,6 +15,9 @@
 - [x] Seed supervised fine-tuning data included
 - [x] Golden evaluation harness included
 - [x] AMD fine-tuning plan included
+- [x] 40 MI300X GPU-hour execution runbook included
+- [x] AMD endpoint benchmark script included
+- [x] AMD ROCm/vLLM serving script included
 
 ## Demo application
 

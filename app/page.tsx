@@ -167,11 +167,20 @@ export default function Home() {
                   <h2 className="mt-2 text-3xl font-black">{result.company} {result.ticker !== 'N/A' ? `(${result.ticker})` : ''}</h2>
                   <p className="mt-2 max-w-3xl text-slate-300">{result.companyBrief}</p>
                 </div>
-                <div className="flex flex-wrap gap-2"><Badge tone={riskTone as never}>Tone: {result.tone.label} · {result.tone.score}/100</Badge><Badge tone="blue">Mode: {result.modelMode}</Badge></div>
+                <div className="flex flex-wrap gap-2"><Badge tone={riskTone as never}>Tone: {result.tone.label} · {result.tone.score}/100</Badge><Badge tone="blue">Mode: {result.modelMode}</Badge><Badge tone="green">GPU budget: {result.amdRun.gpuHoursBudget} MI300X hrs</Badge></div>
               </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Section title="AMD acceleration" eyebrow="MI300X model path">
+                <div className="space-y-3 text-sm text-slate-300">
+                  <p><span className="font-bold text-white">GPU:</span> {result.amdRun.gpu}</p>
+                  <p><span className="font-bold text-white">Model:</span> {result.amdRun.model}</p>
+                  <p><span className="font-bold text-white">Endpoint:</span> {result.amdRun.usedModelEndpoint ? 'AMD model endpoint used' : result.amdRun.endpointConfigured ? 'Configured, fallback used' : 'Not configured in public demo'}</p>
+                  <p><span className="font-bold text-white">Latency:</span> {result.amdRun.latencyMs ? `${result.amdRun.latencyMs} ms` : 'fallback mode'}</p>
+                  <p className="rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-3 text-emerald-100">{result.amdRun.note}</p>
+                </div>
+              </Section>
               <Section title="Executive summary" eyebrow="Report Agent">
                 <ul className="space-y-3 text-slate-300">{result.executiveSummary.map((item) => <li key={item} className="flex gap-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />{item}</li>)}</ul>
               </Section>

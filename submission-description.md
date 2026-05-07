@@ -20,6 +20,11 @@ Financial research teams spend hours converting long-form source material into d
 
 The application is designed around AMD Developer Cloud as the inference layer for open-source models. In production, the Report Agent can call an OpenAI-compatible endpoint backed by AMD GPUs and ROCm-compatible model serving. The public demo includes deterministic local mode for reliability, while `.env.example` and `architecture.md` document the AMD endpoint configuration.
 
+
+## Custom model and GPU plan
+
+The project does not claim to train a foundation model from scratch. Instead, the model-ownership path is an EarningsPilot LoRA/QLoRA adapter on top of a strong open-source instruction model, served on AMD Developer Cloud. The recommended hackathon configuration is one AMD Instinct MI300X for 7B-class inference and adapter tuning, with an optional 8x MI300X node for larger model experiments.
+
 ## Open-source model strategy
 
 Recommended models include Qwen2.5 Instruct, Llama, DeepSeek, and Mistral-family instruction models. Prompts are narrow, JSON-oriented, and source-grounded.
