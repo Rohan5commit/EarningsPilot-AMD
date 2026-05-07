@@ -77,7 +77,7 @@ def _dtype():
 model = AutoModelForCausalLM.from_pretrained(
     base_model,
     trust_remote_code=True,
-    dtype=_dtype(),
+    torch_dtype=_dtype(),
     low_cpu_mem_usage=False,
 )
 
